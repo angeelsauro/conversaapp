@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Instala o actualiza Conversa en un servidor Ubuntu 24.04 sin puertos abiertos (Cloudflare Tunnel + Access).
+# Instala o actualiza Conversa en un servidor Ubuntu 24.04 o posterior sin puertos abiertos (Cloudflare Tunnel + Access).
 # Se ejecuta como root desde la consola del proveedor (ver SERVIDOR.md). Pregunta el subdominio y el token del
 # túnel la primera vez; no guarda el token de GitHub y no imprime secretos. Volver a ejecutarlo actualiza el código
 # y conserva datos, claves y sesión de WhatsApp.
@@ -35,7 +35,16 @@ if [ "$(awk '/MemTotal/{print $2}' /proc/meminfo)" -lt 1900000 ] && ! swapon --s
 fi
 
 echo "2/5 Docker"
-command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh >/dev/null 2>&1
+if ! command -v docker >/dev/null; then
+  curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 || true
+  # Very new Ubuntu releases can arrive before Docker publishes packages for them: fall back to Ubuntu's own Docker.
+  if ! command -v docker >/dev/null; then
+    apt-get install -y -qq docker.io docker-compose-v2 >/dev/null
+    apt-get install -y -qq docker-buildx >/dev/null 2>&1 || true
+  fi
+fi
+docker compose version >/dev/null 2>&1 || apt-get install -y -qq docker-compose-v2 >/dev/null
+systemctl enable --now docker >/dev/null 2>&1 || true
 
 echo "3/5 Código de Conversa ($BRANCH)"
 src=$(mktemp -d)
