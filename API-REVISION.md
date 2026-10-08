@@ -8,7 +8,7 @@ POST /api/login recibe {token} del código privado creado localmente. Cookie Htt
 
 ## Lectura autenticada
 
-- GET /api/state: conexión, primeros mensajes, chats, configuración, estados de cola, datos del workspace.
+- GET /api/state: conexión, primeros mensajes, chats, configuración, estados de cola, datos del workspace. Desde 0.2.1 incluye `tests` (si las rutas de prueba están activas) y `keywordTest` ({jid, expiresAt, consumedAt} de la prueba PRUEBA, o null).
 - GET /api/messages?offset=N: página adicional de mensajes; conversationJid normaliza alias para interfaz.
 - GET /api/export: exportación de mensajes y chats. Contiene datos privados, nunca adjuntarla al paquete público.
 

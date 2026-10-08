@@ -6,6 +6,9 @@ Servidor Node 24 para vincular un WhatsApp por QR, importar el historial directo
 
 ## Abrir
 
+Prueba real con tu WhatsApp: seguir [PRUEBA-REAL.md](PRUEBA-REAL.md).
+
+
 Ejecutar `Abrir-Conversa.ps1` en Windows. El panel local es http://127.0.0.1:4318/. El archivo abre el acceso privado sin imprimirlo. No compartir el enlace con fragmento de acceso.
 
 Para desarrollo: `npm ci`, `npm test`, `npm start`. Para ver el panel con datos ficticios, sin WhatsApp: `npm run preview` (http://127.0.0.1:4319), o `npm run demo` para generar `dist/conversa-demo.html`, un archivo que se abre con doble clic. No ejecutar dos servidores sobre la misma carpeta de datos. La instancia local escucha solamente en loopback.

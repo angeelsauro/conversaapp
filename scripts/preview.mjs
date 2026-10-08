@@ -11,7 +11,7 @@ import {demoConnector,seedDemo} from './demo-data.mjs';
 if(process.env.NODE_ENV==='production')throw new Error('La vista previa no se ejecuta en producción.');
 const port=Number(process.env.PREVIEW_PORT||4319),dir=mkdtempSync(join(tmpdir(),'conversa-preview-'));
 const qr=await QRCode.toDataURL('Vista previa de Conversa. Este código no vincula ningún dispositivo.',{width:300,margin:2,errorCorrectionLevel:'M'});
-const app=createApp({dir,port,connectorFactory:store=>demoConnector(store,{History,qr}),testEndpoints:false});
+const app=createApp({dir,port,connectorFactory:store=>demoConnector(store,{History,qr}),testEndpoints:process.env.CONVERSA_TEST_ENDPOINTS==='on'});
 seedDemo({store:app.store,history:app.connector.history,bot:app.bot});
 
 app.server.listen(port,'127.0.0.1',async()=>{

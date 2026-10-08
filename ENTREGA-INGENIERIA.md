@@ -94,6 +94,8 @@ Leer también ALCANCE-PRODUCTO.md (producto determinista sin IA generativa, requ
 - Cola: los trabajos terminados (enviados, omitidos o fallidos) se eliminan a los 7 días. La cola se descifra completa cada segundo y crecía sin límite. Los pendientes e inciertos se conservan.
 - Cabeceras HTTP adicionales: Cross-Origin-Opener-Policy, Cross-Origin-Resource-Policy y Permissions-Policy.
 - Panel: eliminar respuestas guardadas; confirmación antes de activar el bot; fecha relativa en la lista de chats («Ayer», día de la semana o fecha, no solo la hora); mensajes de error legibles cuando un proxy devuelve una página no JSON; se quitó un nombre propio fijo del texto de protecciones; la pantalla de acceso explica el uso en servidor.
+- Prueba real en local: botón «Prueba real (PRUEBA)» en las opciones del chat, que usa /api/bot/test. Solo aparece cuando el servidor tiene activas las rutas de prueba (`tests` en /api/state), así que no aparece en producción. Guía para el propietario en PRUEBA-REAL.md.
+- `Abrir-Conversa.ps1` espera a que el servidor responda, muestra el error si no arranca y avisa si el puerto 4318 lo ocupa otro Conversa (otra carpeta o versión). Se guarda en UTF-8 con BOM para que Windows PowerShell 5.1 muestre bien las tildes.
 - Despliegue: lista opcional de IP permitidas en Caddy (`CONVERSA_ALLOWED_IPS`, que también acepta `prepare-deploy.mjs` como segundo argumento); `.dockerignore` excluye `.git`, copias y documentación.
 - `npm run preview`: vista previa con datos ficticios, sin WhatsApp. `npm run demo`: la misma vista previa en un solo archivo HTML, sin servidor.
 - Confirmaciones dentro del panel (activar bot, borrar mensajes, eliminar o descartar respuestas) en lugar de `confirm()` del navegador, que algunos visores integrados bloquean.
