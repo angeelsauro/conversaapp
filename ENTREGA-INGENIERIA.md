@@ -22,6 +22,8 @@ El servidor escucha en http://127.0.0.1:4318. En Windows, después de instalar l
 
 Vista previa sin WhatsApp: `npm run preview` levanta el panel en http://127.0.0.1:4319 con chats ficticios en una carpeta temporal que se borra al cerrar. No usa `.data`, no conecta con WhatsApp y su «QR» no vincula ningún teléfono. Sirve para revisar diseño y flujo (revisión de chats, biblioteca, prueba privada, activación del bot con una respuesta simulada).
 
+Demo de un solo archivo: `npm run demo` genera `dist/conversa-demo.html`, que se abre con doble clic en cualquier navegador, sin Node ni servidor. Ejecuta el código real de src/history.mjs y src/bot.mjs sobre datos ficticios en memoria. Las rutas /api/* se atienden en el propio navegador imitando src/server.mjs. No sustituye las pruebas del servidor.
+
 npm start crea la base y las credenciales de acceso locales. El bot empieza desactivado. Los textos y palabras clave guardados en la instancia del propietario no están incluidos: son datos privados de ejecución. El puerto debe estar libre.
 
 ## Arquitectura
@@ -93,13 +95,14 @@ Leer también ALCANCE-PRODUCTO.md (producto determinista sin IA generativa, requ
 - Cabeceras HTTP adicionales: Cross-Origin-Opener-Policy, Cross-Origin-Resource-Policy y Permissions-Policy.
 - Panel: eliminar respuestas guardadas; confirmación antes de activar el bot; fecha relativa en la lista de chats («Ayer», día de la semana o fecha, no solo la hora); mensajes de error legibles cuando un proxy devuelve una página no JSON; se quitó un nombre propio fijo del texto de protecciones; la pantalla de acceso explica el uso en servidor.
 - Despliegue: lista opcional de IP permitidas en Caddy (`CONVERSA_ALLOWED_IPS`, que también acepta `prepare-deploy.mjs` como segundo argumento); `.dockerignore` excluye `.git`, copias y documentación.
-- `npm run preview`: vista previa con datos ficticios, sin WhatsApp.
+- `npm run preview`: vista previa con datos ficticios, sin WhatsApp. `npm run demo`: la misma vista previa en un solo archivo HTML, sin servidor.
+- Confirmaciones dentro del panel (activar bot, borrar mensajes, eliminar o descartar respuestas) en lugar de `confirm()` del navegador, que algunos visores integrados bloquean.
 - CI de GitHub Actions: `npm ci` + `npm test` en Node 24, construcción de la imagen Docker y validación del Caddyfile.
 
 ### Verificación de esta revisión
 
 - `npm test`: 24 pruebas aprobadas, 0 fallidas (20 originales + 4 nuevas en test/hardening.test.mjs), Node 24.21.0, Linux. La prueba nueva de exclusión falla con el código 0.2.0, lo que confirma que detecta el error corregido.
-- Navegador real (Chromium/Playwright) contra `npm run preview`: acceso con enlace privado (el código desaparece de la URL), 7 chats ficticios, prueba privada con coincidencia única y con dos coincidencias (no responde), crear y eliminar una respuesta, activar el bot con confirmación, respuesta simulada a un mensaje entrante con traspaso a revisión, cierre de sesión. Sin desplazamiento horizontal a 375, 390, 430 y 1440 píxeles. Sin errores de JavaScript; el único error de consola es el 401 esperado tras cerrar la sesión.
+- Navegador real (Chromium/Playwright) contra `npm run preview` y contra `dist/conversa-demo.html`: acceso con enlace privado (el código desaparece de la URL), 7 chats ficticios, prueba privada con coincidencia única y con dos coincidencias (no responde), crear y eliminar una respuesta, activar el bot con confirmación, respuesta simulada a un mensaje entrante con traspaso a revisión, cierre de sesión. Sin desplazamiento horizontal a 375, 390, 430 y 1440 píxeles. Sin errores de JavaScript; el único error de consola es el 401 esperado tras cerrar la sesión.
 - Imagen Docker de producción con `docker compose`, Caddy y HTTPS (certificado interno para un dominio de prueba): contenedor sano según el healthcheck, usuario `node` (uid 1000), sistema de archivos de solo lectura, cookie `Secure`, HSTS y CSP presentes, origen hostil rechazado (403), endpoints de prueba en 404, lista de IP de Caddy bloqueando (403) y permitiendo (200). Tras `restart` y tras `kill -9`, el bloqueo de instancia se recupera y la pausa explícita se conserva. El código de acceso no aparece en los registros.
 - En la prueba con Docker sin iptables, Caddy veía la IP de la puerta de enlace de Docker y no la del cliente. Por eso hay que comprobar la lista de IP en el servidor real (ver DEPLOY.md).
 - No verificado en esta revisión: conexión real con WhatsApp. La red de este entorno de revisión bloquea web.whatsapp.com. La única prueba real de envío sigue siendo la del propietario, en la entrega 0.2.0. Repetirla en el servidor elegido con un número de pruebas antes de operar.

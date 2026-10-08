@@ -5,3 +5,4 @@ node_modules/
 deploy/secrets/
 deploy/data/
 *.cvb
+dist/
