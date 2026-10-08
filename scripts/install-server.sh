@@ -22,6 +22,9 @@ fi
 
 echo "1/5 Sistema: actualizaciones automáticas de seguridad y cortafuegos (solo SSH entrante)"
 export DEBIAN_FRONTEND=noninteractive
+# A fresh Droplet is usually still running cloud-init and automatic updates: wait for them instead of failing on the apt lock.
+command -v cloud-init >/dev/null && cloud-init status --wait >/dev/null 2>&1 || true
+echo 'DPkg::Lock::Timeout "600";' > /etc/apt/apt.conf.d/99conversa-lock-wait
 apt-get update -qq >/dev/null
 apt-get install -y -qq ca-certificates curl ufw fail2ban unattended-upgrades >/dev/null
 { ufw allow OpenSSH >/dev/null && ufw --force enable >/dev/null; } || echo "   Aviso: no se pudo activar el cortafuegos ufw; revísalo a mano."
