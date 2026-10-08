@@ -29,6 +29,11 @@ apt-get update -qq >/dev/null
 apt-get install -y -qq ca-certificates curl ufw fail2ban unattended-upgrades >/dev/null
 { ufw allow OpenSSH >/dev/null && ufw --force enable >/dev/null; } || echo "   Aviso: no se pudo activar el cortafuegos ufw; revísalo a mano."
 
+# Small plans (1 GB): add 2 GB of swap so building the image and running Conversa never run out of memory.
+if [ "$(awk '/MemTotal/{print $2}' /proc/meminfo)" -lt 1900000 ] && ! swapon --show | grep -q .; then
+  { fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; } || echo "   Aviso: no se pudo crear la memoria de intercambio."
+fi
+
 echo "2/5 Docker"
 command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh >/dev/null 2>&1
 

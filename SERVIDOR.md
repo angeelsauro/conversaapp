@@ -1,7 +1,7 @@
 # Publicar Conversa en un servidor (DigitalOcean + Cloudflare)
 
 - **Tiempo:** unos 30 minutos.
-- **Coste:** alrededor de 12 USD al mes (Droplet de 2 GB). Confirma el precio en la pantalla de DigitalOcean.
+- **Coste:** desde unos 6 USD al mes (Droplet de 1 GB; el instalador añade memoria de intercambio). Confirma el precio en la pantalla de DigitalOcean.
 - **Resultado:** el panel queda en `https://panel-xxxx.<tu dominio>` y solo se entra con tu correo (Cloudflare Access) y con el código privado de Conversa. El servidor no tiene puertos web abiertos. Los motivos están en SEGURIDAD-PUBLICACION.md.
 
 Los nombres de los menús pueden variar un poco según la versión del panel de cada servicio.
@@ -34,7 +34,7 @@ Los nombres de los menús pueden variar un poco según la versión del panel de 
 2. Elige:
    - **Región:** New York.
    - **Imagen:** Ubuntu 24.04 (LTS).
-   - **Tamaño:** Basic → Regular → **2 GB / 1 CPU**.
+   - **Tamaño:** configuración **Bundled** → **Basic** → **Regular** → el plan de **1 GB** (unos 6 USD al mes) o el de 2 GB.
 3. En **Authentication** elige **Password**, con una contraseña larga guardada en tu gestor de contraseñas. Después pulsa **Create Droplet**.
 4. Cuando esté listo, abre el Droplet → **Access** → **Launch Droplet Console**.
 
