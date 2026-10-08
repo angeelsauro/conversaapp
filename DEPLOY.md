@@ -1,0 +1,57 @@
+> Estado actualizado de esta entrega: consultar **ENTREGA-INGENIERIA.md**. Las notas de IA y despliegue de este documento contienen contexto histórico; no indican funciones activadas ni un servidor ya publicado.
+
+# Conversa: despliegue privado de un propietario
+
+Preparado el 8 de octubre de 2026. No se ha contratado ni desplegado un servidor público.
+
+## Infraestructura que falta
+
+Un servidor Linux permanente con Docker Engine y Compose, disco persistente, acceso administrativo y un dominio/subdominio que apunte a su IP. Para el piloto, reservar inicialmente 2 GB de RAM y vigilar consumo y espacio; ajustar según el historial. Abrir 80/443 para Caddy y restringir SSH. El puerto 4318 queda interno: no publicarlo directamente.
+
+La PC y el navegador son clientes del panel; el proceso del servidor mantiene WhatsApp. Cerrar el navegador no detiene el bot. WhatsApp aún puede revocar la sesión o exigir actividad del teléfono: no hay garantía de conexión indefinida ni de todo el historial.
+
+## Antes del primer arranque
+
+Copiar solo código, package.json, package-lock.json, Dockerfile, public, src, scripts y deploy. Nunca publicar `.data`, `.env.local`, copias, claves ni sesiones en Git o en la imagen.
+
+Desde la raíz del proyecto en Linux, con Node 24 y permisos para preparar el directorio:
+
+```sh
+sudo node scripts/prepare-deploy.mjs conversa.TU-DOMINIO.com
+docker compose --env-file deploy/.env -f deploy/compose.yaml build
+docker compose --env-file deploy/.env -f deploy/compose.yaml up -d
+```
+
+Sustituir el dominio por uno real en minúsculas; no ejecutar el ejemplo literalmente. Caddy obtiene HTTPS para ese dominio. No se incluye su gestión DNS ni su compra.
+
+`deploy/secrets/encryption.key` es binaria de 32 bytes; `owner-token` es un código privado hexadecimal de 64 caracteres. Guardarlos en un gestor de secretos y entregar el acceso al propietario por un canal privado. El formulario de entrada acepta el código; no compartirlo con terceros. El token no es un token de Meta ni de OpenAI. Regenerarlo revoca las sesiones existentes; la clave de cifrado NO puede regenerarse sin migrar los datos.
+
+## Trasladar la sesión local existente
+
+1. Preparar una copia cifrada con `node scripts/backup.mjs backup RUTA.cvb` desde la raíz local.
+2. Detener la instancia local antes de iniciar WhatsApp en el servidor. Nunca mantener dos procesos para la misma sesión, ni escalar este contenedor a varias réplicas.
+3. Transferir la copia cifrada y la clave original por separado mediante un canal privado. Colocar la clave original en `deploy/secrets/encryption.key`, antes de preparar un volumen con datos. Conservar también el acceso del propietario o generar uno nuevo en el destino.
+4. Restaurar en un directorio vacío con `CONVERSA_DATA_DIR=...` y `CONVERSA_KEY_FILE=...`, ejecutando `node scripts/backup.mjs restore RUTA.cvb`. Corregir propietario de los archivos restaurados a UID/GID 1000, usados por la imagen.
+5. Iniciar el contenedor y comprobar conexión, fecha de corte y chats excluidos. La restauración conserva reglas, cola y configuración. WhatsApp puede pedir otro QR: reconectar no reinicia el corte.
+
+No es necesario borrar la cuenta de WhatsApp ni eliminar chats del teléfono. No copiar una base activa junto con un WAL incompleto: usar el comando de backup.
+
+## Operación
+
+- `docker compose --env-file deploy/.env -f deploy/compose.yaml ps` muestra estado y salud.
+- `docker compose --env-file deploy/.env -f deploy/compose.yaml logs --tail=100 conversa` muestra arranques y cambios de conexión sin textos, números, QR o claves.
+- `/healthz` solo indica que HTTP responde, NO certifica conexión con WhatsApp. El panel autenticado muestra conexión real y cola. Configurar monitoreo del servidor y del estado autenticado antes de operación desatendida; sus alertas externas todavía no están configuradas.
+- Programar copias cifradas diarias y retención en el servidor elegido, separadas de la clave. Probar restauración periódicamente. Esa programación está pendiente del servidor; el comando ya funciona.
+- Docker reinicia el proceso si sale o si reinicia el host. El conector reintenta fallos de red con espera creciente; una sesión revocada necesita intervención.
+- Una pausa del propietario se conserva en reinicios. Un apagado del proceso no se interpreta como pausa.
+- Se conserva el historial recibido sin recorte a 500. Vigilar espacio. Desde Mensajes se exportan o borran datos por contacto; una exclusión mínima cifrada evita que un contacto borrado vuelva a habilitarse. Las copias anteriores requieren su propia retención/borrado.
+
+## Bot y alcance
+
+La respuesta estándar y la cola están implementadas. Solo responde después de activarlo y de revisar cada chat nuevo; jamás al historial importado. STOP cancela respuestas al contacto; una intervención humana pausa su chat. Un envío cuyo resultado se desconoce queda «uncertain» y no se reenvía automáticamente; el propietario debe comprobarlo en WhatsApp.
+
+El adaptador de IA depende de la decisión pendiente sobre la clave de OpenAI. No se ha activado ningún bot sobre los contactos reales. No hay alta de clientes, facturación de terceros ni aplicaciones de tiendas: este despliegue es exclusivo de un propietario.
+
+## Validación antes de uso real
+
+Construcción de imagen, arranque endurecido en Docker, reinicio y apagado abrupto probados con datos ficticios. La conexión local real se recuperó sin QR tras una actualización. Quedan por probar en el servidor contratado: HTTPS público, DNS, restauración de la sesión real allí, entrega real controlada, caída prolongada de red y observación de 24–48 horas. No afirmar disponibilidad 24/7 antes de esas pruebas.

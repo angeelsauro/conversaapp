@@ -1,0 +1,44 @@
+services:
+  conversa:
+    build: ..
+    restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+    environment:
+      PUBLIC_ORIGIN: https://${CONVERSA_DOMAIN:?Set CONVERSA_DOMAIN}
+      CONVERSA_KEY_FILE: /run/secrets/encryption_key
+      CONVERSA_OWNER_TOKEN_FILE: /run/secrets/owner_token
+    volumes:
+      - ./data:/data
+    secrets: [encryption_key, owner_token]
+    expose: ["4318"]
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.mjs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  proxy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      CONVERSA_DOMAIN: ${CONVERSA_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [conversa]
+secrets:
+  encryption_key:
+    file: ./secrets/encryption.key
+  owner_token:
+    file: ./secrets/owner-token
+volumes:
+  caddy_data:
+  caddy_config:

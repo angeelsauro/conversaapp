@@ -1,0 +1,4 @@
+{$CONVERSA_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy conversa:4318
+}
