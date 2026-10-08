@@ -26,9 +26,11 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  const equal=(a,b)=>typeof a==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
  const origins=new Set(publicOrigin?[publicOrigin]:[`http://127.0.0.1:${port}`,`http://localhost:${port}`]);
  const hosts=new Set([...origins].map(x=>new URL(x).host));const secure=publicOrigin?.startsWith('https://');
- const cookie=(id,age)=>`conversa_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${secure?'; Secure':''}`;
+ // HTTPS: __Host- prefix, so a sibling subdomain of the same company domain cannot plant or overwrite the session cookie.
+ const cookieName=secure?'__Host-conversa_session':'conversa_session';
+ const cookie=(id,age)=>`${cookieName}=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${secure?'; Secure':''}`;
  const server=http.createServer(async(req,res)=>{
-  res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Cross-Origin-Opener-Policy','same-origin');res.setHeader('Cross-Origin-Resource-Policy','same-origin');res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=(), payment=()');if(secure)res.setHeader('Strict-Transport-Security','max-age=31536000');
+  res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Cross-Origin-Opener-Policy','same-origin');res.setHeader('Cross-Origin-Resource-Policy','same-origin');res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=(), payment=()');res.setHeader('X-Robots-Tag','noindex, nofollow');if(secure)res.setHeader('Strict-Transport-Security','max-age=31536000');
   res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   const json=(code,obj)=>{res.writeHead(code,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(obj));};
   if(!hosts.has(req.headers.host))return json(403,{error:'Host no permitido.'});
@@ -36,7 +38,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
   try {
    if(req.method==='GET'&&path==='/healthz')return json(200,{ok:true});
    if(req.method==='GET'&&['/','/app.js','/styles.css','/icon.svg'].includes(path)){const name=path==='/'?'index.html':path.slice(1),type=name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':name.endsWith('.svg')?'image/svg+xml':'text/html';res.writeHead(200,{'Content-Type':type+'; charset=utf-8'});res.end(readFileSync(join(root,'public',name)));return;}
-   const sid=req.headers.cookie?.split(';').map(c=>c.trim()).find(c=>c.startsWith('conversa_session='))?.slice(17);
+   const sid=req.headers.cookie?.split(';').map(c=>c.trim()).find(c=>c.startsWith(cookieName+'='))?.slice(cookieName.length+1);
    const session=sid&&sid.length===64?store.get('owner','sessions',hash(sid)):null;
    const authenticated=session?.expiry>Date.now()&&session.tokenVersion===hash(token);
    if(req.method==='GET'){

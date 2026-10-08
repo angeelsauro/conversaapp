@@ -24,6 +24,10 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml up -d
 
 Sustituir el dominio por uno real en minúsculas; no ejecutar el ejemplo literalmente. Caddy obtiene HTTPS para ese dominio. No se incluye su gestión DNS ni su compra.
 
+### Opción recomendada: sin puertos abiertos (0.2.1)
+
+Para publicar en un subdominio de la empresa con el panel solo para el propietario, usar `deploy/compose.tunnel.yaml` (Cloudflare Tunnel) con una aplicación de Cloudflare Access que permita solo el correo del propietario. Los pasos y los riesgos están en SEGURIDAD-PUBLICACION.md.
+
 ### Restringir quién llega al panel (0.2.1)
 
 El segundo argumento, opcional, son las IP o rangos CIDR que pueden abrir el panel, separados por espacios o comas. Por ejemplo, la IP fija de la oficina o el rango de una VPN: `"203.0.113.10/32 100.64.0.0/10"`. Se guarda como `CONVERSA_ALLOWED_IPS` en `deploy/.env`, y Caddy responde 403 a cualquier otra IP. Sin este valor no hay restricción por IP, y el script avisa. Para cambiar la lista, editar `deploy/.env` y ejecutar `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d proxy`.

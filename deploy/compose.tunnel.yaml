@@ -1,0 +1,19 @@
+# Variante sin puertos abiertos: Cloudflare Tunnel delante del panel, con Cloudflare Access como control de identidad.
+# Ver SEGURIDAD-PUBLICACION.md. Se usa junto con compose.yaml:
+#   docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.tunnel.yaml up -d
+# En Cloudflare, el hostname público del túnel apunta a http://conversa:4318.
+services:
+  proxy:
+    profiles: ["caddy"] # Caddy y los puertos 80/443 quedan apagados en esta variante.
+  tunnel:
+    image: cloudflare/cloudflared:2026.9.1
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in deploy/.env}
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    depends_on: [conversa]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}

@@ -24,7 +24,7 @@ test('disabled test routes answer 404; destructive routes validate the chat; sec
  const base=`http://127.0.0.1:${port}`,post=(path,body,cookie)=>fetch(base+path,{method:'POST',headers:{Origin:base,'Content-Type':'application/json',...(cookie?{Cookie:cookie}:{})},body:JSON.stringify(body)});
  try{
   const login=await post('/api/login',{token:readFileSync(join(dir,'owner-token'),'utf8')}),cookie=login.headers.get('set-cookie').split(';')[0];
-  for(const header of ['content-security-policy','cross-origin-opener-policy','permissions-policy','x-content-type-options'])assert.ok(login.headers.get(header),header);
+  for(const header of ['content-security-policy','cross-origin-opener-policy','permissions-policy','x-content-type-options','x-robots-tag'])assert.ok(login.headers.get(header),header);
   assert.equal((await (await fetch(base+'/api/state',{headers:{Cookie:cookie}})).json()).tests,false);
   assert.equal((await post('/api/bot/test',{jid:'200@s.whatsapp.net'},cookie)).status,404);
   assert.equal((await post('/api/chat/send-standard-once',{jid:'200@s.whatsapp.net',incomingId:'x'},cookie)).status,404);
