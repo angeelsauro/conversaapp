@@ -1,19 +1,17 @@
 # Prueba real con tu WhatsApp (Windows)
 
-Se hace en tu PC: tus chats y la sesión de WhatsApp quedan solo en la carpeta `.data` de ese equipo, cifrados. Necesitas Node.js 24 o posterior y tu teléfono a mano.
+Se hace en tu PC: tus chats y la sesión de WhatsApp quedan solo en la carpeta `.data` de ese equipo, cifrados. Necesitas tu teléfono a mano y otra persona que pueda escribirte.
 
-## 1. Instalar esta versión
+## 1. Abrir Conversa (sin comandos)
 
-1. Descomprime el ZIP en una carpeta nueva, por ejemplo `Documentos\Conversa-0.2.1`. Para vincular desde cero, no copies la carpeta `.data` de una instalación anterior.
-2. Si tenías otro Conversa abierto, reinicia el PC o ciérralo. `Abrir-Conversa.ps1` te avisa si sigue abierto.
-3. Abre la carpeta `Conversa`, haz clic derecho en un espacio vacío y elige «Abrir en Terminal». Ejecuta:
+1. Clic derecho en el ZIP > **Extraer todo**.
+2. Si tenías otro Conversa abierto, reinicia el PC. Si sigue abierto, el paso siguiente te avisa.
+3. En la carpeta extraída, entra en **Conversa** y haz doble clic en **Abrir-Conversa.cmd**. Si Windows pregunta si quieres ejecutarlo, pulsa **Ejecutar**, o **Más información** > **Ejecutar de todas formas**.
+   - La primera vez instala lo necesario; tarda alrededor de un minuto.
+   - Si falta Node.js, te ofrece instalarlo: responde `S` y, cuando termine, vuelve a hacer doble clic.
+4. Se abre el panel en el navegador, ya con tu acceso privado. No compartas esa dirección.
 
-```powershell
-npm ci
-powershell -ExecutionPolicy Bypass -File .\Abrir-Conversa.ps1
-```
-
-Se abre el panel en el navegador, ya con tu acceso privado. No compartas esa dirección.
+Otro día, el mismo doble clic vuelve a abrir el panel.
 
 ## 2. Vincular
 
