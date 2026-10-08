@@ -10,6 +10,13 @@ function Stop-WithMessage([string[]]$lines) {
   Read-Host 'Pulsa Enter para salir' | Out-Null
   exit 1
 }
+# OneDrive would upload the WhatsApp session together with its key, and syncing a live SQLite database can corrupt it.
+$sep = [IO.Path]::DirectorySeparatorChar
+foreach ($cloudRoot in @($env:OneDrive, $env:OneDriveConsumer, $env:OneDriveCommercial)) {
+  if ($cloudRoot -and ($projectRoot.TrimEnd($sep) + $sep).StartsWith($cloudRoot.TrimEnd($sep) + $sep, [StringComparison]::OrdinalIgnoreCase)) {
+    Stop-WithMessage @('Esta carpeta está dentro de OneDrive: subiría tu sesión de WhatsApp y su clave a la nube, y la sincronización puede dañar la base de datos.', 'Mueve la carpeta Conversa fuera de OneDrive, por ejemplo a C:\Conversa, y vuelve a abrir Abrir-Conversa.cmd.')
+  }
+}
 New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
 if (Test-Conversa) {
   # A running server belongs to this folder only if its lock file is here; otherwise it is another copy or an older version.

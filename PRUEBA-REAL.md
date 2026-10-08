@@ -4,7 +4,7 @@ Se hace en tu PC: tus chats y la sesión de WhatsApp quedan solo en la carpeta `
 
 ## 1. Abrir Conversa (sin comandos)
 
-1. Clic derecho en el ZIP > **Extraer todo**.
+1. Clic derecho en el ZIP > **Extraer todo** y elige una carpeta fuera de OneDrive, por ejemplo `C:\`, para que quede `C:\Conversa`. Si los archivos muestran iconos verdes de OneDrive, la carpeta está dentro de OneDrive: subiría tu sesión de WhatsApp y su clave a la nube, y el lanzador no arrancará.
 2. Si tenías otro Conversa abierto, reinicia el PC. Si sigue abierto, el paso siguiente te avisa.
 3. En la carpeta extraída, entra en **Conversa** y haz doble clic en **Abrir-Conversa.cmd**. Si Windows pregunta si quieres ejecutarlo, pulsa **Ejecutar**, o **Más información** > **Ejecutar de todas formas**.
    - La primera vez instala lo necesario; tarda alrededor de un minuto.
