@@ -23,7 +23,7 @@ Tu navegador → Cloudflare Access (solo tu correo + código o Google con 2FA)
 - Cloudflare Access rechaza a cualquiera que no sea tú antes de que la petición llegue a Conversa. Conversa sigue pidiendo además su propio código privado: son dos capas.
 - Ya está preparado en `deploy/compose.tunnel.yaml`. Arranca solo Conversa y el túnel; Caddy y sus puertos quedan apagados.
 
-Pasos:
+Pasos (la guía paso a paso con DigitalOcean e instalador de una línea está en SERVIDOR.md):
 
 1. Contrata un servidor Linux con Docker y disco persistente (para la prueba, 2 GB de RAM). Activa las actualizaciones automáticas de seguridad y desactiva el acceso SSH con contraseña.
 2. En Cloudflare Zero Trust:

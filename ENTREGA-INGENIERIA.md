@@ -102,6 +102,7 @@ Leer también ALCANCE-PRODUCTO.md (producto determinista sin IA generativa, requ
 - Despliegue: lista opcional de IP permitidas en Caddy (`CONVERSA_ALLOWED_IPS`, que también acepta `prepare-deploy.mjs` como segundo argumento); `.dockerignore` excluye `.git`, copias y documentación.
 - `npm run preview`: vista previa con datos ficticios, sin WhatsApp. `npm run demo`: la misma vista previa en un solo archivo HTML, sin servidor.
 - Confirmaciones dentro del panel (activar bot, borrar mensajes, eliminar o descartar respuestas) en lugar de `confirm()` del navegador, que algunos visores integrados bloquean.
+- `scripts/install-server.sh` + SERVIDOR.md: instalación en Ubuntu 24.04 (DigitalOcean) con una línea. Instala Docker, ufw (solo SSH entrante), fail2ban y actualizaciones automáticas; descarga el código con un token de GitHub de solo lectura que no guarda; genera los secretos sin mostrarlos y arranca la variante con túnel. Sintaxis validada; falta la primera ejecución en un Droplet real.
 - CI de GitHub Actions: `npm ci` + `npm test` en Node 24, construcción de la imagen Docker y validación del Caddyfile.
 
 ### Verificación de esta revisión
