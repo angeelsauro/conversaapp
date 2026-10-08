@@ -17,12 +17,22 @@ Copiar solo código, package.json, package-lock.json, Dockerfile, public, src, s
 Desde la raíz del proyecto en Linux, con Node 24 y permisos para preparar el directorio:
 
 ```sh
-sudo node scripts/prepare-deploy.mjs conversa.TU-DOMINIO.com
+sudo node scripts/prepare-deploy.mjs conversa.TU-DOMINIO.com "IP-O-CIDR-PERMITIDOS"
 docker compose --env-file deploy/.env -f deploy/compose.yaml build
 docker compose --env-file deploy/.env -f deploy/compose.yaml up -d
 ```
 
 Sustituir el dominio por uno real en minúsculas; no ejecutar el ejemplo literalmente. Caddy obtiene HTTPS para ese dominio. No se incluye su gestión DNS ni su compra.
+
+### Restringir quién llega al panel (0.2.1)
+
+El segundo argumento, opcional, son las IP o rangos CIDR que pueden abrir el panel, separados por espacios o comas. Por ejemplo, la IP fija de la oficina o el rango de una VPN: `"203.0.113.10/32 100.64.0.0/10"`. Se guarda como `CONVERSA_ALLOWED_IPS` en `deploy/.env`, y Caddy responde 403 a cualquier otra IP. Sin este valor no hay restricción por IP, y el script avisa. Para cambiar la lista, editar `deploy/.env` y ejecutar `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d proxy`.
+
+Comprobarlo siempre desde fuera, por ejemplo desde los datos móviles con la VPN apagada: debe responder «Acceso restringido». Si Docker publica los puertos con su proxy de espacio de usuario (por ejemplo, con IPv6 o sin iptables), Caddy ve la IP de la puerta de enlace de Docker y no la del cliente. En ese caso la lista no protege nada. Nunca añadir la puerta de enlace de Docker a la lista. Una VPN o un firewall del proveedor siguen siendo la opción recomendada para administración restringida.
+
+### Endpoints de prueba
+
+Con `NODE_ENV=production`, que es el valor de la imagen, /api/bot/test y /api/chat/send-standard-once responden 404. Para una prueba real puntual y autorizada, definir `CONVERSA_TEST_ENDPOINTS: "on"` en el servicio `conversa` de compose, recrear el contenedor y quitarlo al terminar.
 
 `deploy/secrets/encryption.key` es binaria de 32 bytes; `owner-token` es un código privado hexadecimal de 64 caracteres. Guardarlos en un gestor de secretos y entregar el acceso al propietario por un canal privado. El formulario de entrada acepta el código; no compartirlo con terceros. El token no es un token de Meta ni de OpenAI. Regenerarlo revoca las sesiones existentes; la clave de cifrado NO puede regenerarse sin migrar los datos.
 
@@ -40,6 +50,7 @@ No es necesario borrar la cuenta de WhatsApp ni eliminar chats del teléfono. No
 
 - `docker compose --env-file deploy/.env -f deploy/compose.yaml ps` muestra estado y salud.
 - `docker compose --env-file deploy/.env -f deploy/compose.yaml logs --tail=100 conversa` muestra arranques y cambios de conexión sin textos, números, QR o claves.
+- La integración continua (.github/workflows/ci.yml) ejecuta las pruebas en Node 24, construye la imagen y valida el Caddyfile en cada push.
 - `/healthz` solo indica que HTTP responde, NO certifica conexión con WhatsApp. El panel autenticado muestra conexión real y cola. Configurar monitoreo del servidor y del estado autenticado antes de operación desatendida; sus alertas externas todavía no están configuradas.
 - Programar copias cifradas diarias y retención en el servidor elegido, separadas de la clave. Probar restauración periódicamente. Esa programación está pendiente del servidor; el comando ya funciona.
 - Docker reinicia el proceso si sale o si reinicia el host. El conector reintenta fallos de red con espera creciente; una sesión revocada necesita intervención.

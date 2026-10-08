@@ -32,8 +32,10 @@ export class Bot {
   this.store.put(this.w,'queue',key,job);return {state:job.state};
  }
  armKeywordTest(jid){if(typeof jid!=='string'||!/^\d+@s\.whatsapp\.net$/.test(jid))throw new Error('Contacto inválido');const chat=this.c.history.chat(jid);if(!chat.earliest||chat.deleted||chat.optOut||chat.handoffReason==='view-once')throw new Error('Contacto no disponible para prueba');const now=Date.now(),test={id:randomBytes(16).toString('hex'),jid:chat.jid,armedAt:now,expiresAt:now+600000,text:'Mensaje de prueba recibido correctamente.'};this.store.put(this.w,'settings','keyword-test',test);return {expiresAt:test.expiresAt,keyword:'PRUEBA'};}
- start(){this.timer=setInterval(()=>this.tick().catch(()=>{this.lastError='QUEUE_FAILURE';}),1000);this.timer.unref?.();}
- stop(){clearInterval(this.timer);this.stopped=true;}
+ start(){this.prune();this.timer=setInterval(()=>this.tick().catch(()=>{this.lastError='QUEUE_FAILURE';}),1000);this.timer.unref?.();this.pruneTimer=setInterval(()=>{try{this.prune();}catch{}},3600000);this.pruneTimer.unref?.();}
+ stop(){clearInterval(this.timer);clearInterval(this.pruneTimer);this.stopped=true;}
+ // tick() decrypts the whole queue every second: drop finished jobs after 7 days. Pending and uncertain jobs stay for the owner.
+ prune(now=Date.now()){for(const job of this.store.list(this.w,'queue',-1))if(['sent','skipped','failed'].includes(job.state)&&now-job.timestamp>7*86400000)this.store.remove(this.w,'queue',job.id);}
  allowed(job){if(job.testId){const t=this.store.get(this.w,'settings','keyword-test'),chat=this.c.history.chat(job.jid);return !this.stopped&&this.c.status==='connected'&&t?.id===job.testId&&!t.consumedAt&&t.expiresAt>Date.now()&&job.timestamp>=t.armedAt&&chat.jid===t.jid&&!chat.deleted&&!chat.optOut&&chat.handoffReason!=='view-once';}const config=this.config();return !this.stopped&&config.enabled&&job.timestamp>=config.enabledAt&&this.c.status==='connected'&&this.c.history.eligible(this.c.history.chat(job.jid));}
  async tick(){
   if(this.running||this.stopped||this.c.status!=='connected')return;this.running=true;

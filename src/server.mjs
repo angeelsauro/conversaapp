@@ -7,9 +7,12 @@ import {Store} from './store.mjs';
 import {Connector} from './connector.mjs';
 import {Bot} from './bot.mjs';
 import {lockDirectory} from './lock.mjs';
+import {direct} from './history.mjs';
 const root=resolve(fileURLToPath(new URL('..',import.meta.url)));
 const hash=s=>createHash('sha256').update(s).digest('hex');
-export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data'),port=4318,connectorFactory,respond,publicOrigin=process.env.PUBLIC_ORIGIN}={}) {
+// Auxiliary admin test routes (/api/bot/test, /api/chat/send-standard-once) stay off in production unless explicitly enabled.
+export const testEndpointsEnabled=(env=process.env)=>env.CONVERSA_TEST_ENDPOINTS==='on'||(env.NODE_ENV!=='production'&&env.CONVERSA_TEST_ENDPOINTS!=='off');
+export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data'),port=4318,connectorFactory,respond,publicOrigin=process.env.PUBLIC_ORIGIN,testEndpoints=testEndpointsEnabled()}={}) {
  const production=process.env.NODE_ENV==='production';
  if(production&&(!publicOrigin?.startsWith('https://')||!process.env.CONVERSA_KEY_FILE||!process.env.CONVERSA_OWNER_TOKEN_FILE))throw new Error('Production requires HTTPS origin and external secret files');
  if(publicOrigin&&new URL(publicOrigin).origin!==publicOrigin)throw new Error('PUBLIC_ORIGIN must be an exact origin');
@@ -25,7 +28,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  const hosts=new Set([...origins].map(x=>new URL(x).host));const secure=publicOrigin?.startsWith('https://');
  const cookie=(id,age)=>`conversa_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${secure?'; Secure':''}`;
  const server=http.createServer(async(req,res)=>{
-  res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');if(secure)res.setHeader('Strict-Transport-Security','max-age=31536000');
+  res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Cross-Origin-Opener-Policy','same-origin');res.setHeader('Cross-Origin-Resource-Policy','same-origin');res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=(), payment=()');if(secure)res.setHeader('Strict-Transport-Security','max-age=31536000');
   res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   const json=(code,obj)=>{res.writeHead(code,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(obj));};
   if(!hosts.has(req.headers.host))return json(403,{error:'Host no permitido.'});
@@ -62,18 +65,20 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    else if(path==='/api/connect')await connector.connect();
    else if(path==='/api/pause')connector.pause();
    else if(path==='/api/disconnect')await connector.disconnect();
-   else if(path==='/api/bot/test')return json(200,bot.armKeywordTest(input.jid));
+   else if(path==='/api/bot/test'&&testEndpoints)return json(200,bot.armKeywordTest(input.jid));
    else if(path==='/api/bot/config')return json(200,{bot:bot.configure(input)});
-   else if(path==='/api/chat/send-standard-once')return json(200,await bot.sendStandardOnce(input));
+   else if(path==='/api/chat/send-standard-once'&&testEndpoints)return json(200,await bot.sendStandardOnce(input));
    else if(path==='/api/bot/preview')return json(200,{text:await bot.preview(input.text)});
    else if(path==='/api/chat/review'){if(typeof input.enabled!=='boolean')throw new Error('Selección inválida');connector.history.review(input.jid,input.enabled);}
    else if(path==='/api/history/more'){
+    if(!direct(input.jid))throw new Error('Chat inválido');
     if(connector.status!=='connected')throw new Error('Conecta WhatsApp primero');
     const oldest=store.list('owner','messages',-1).filter(m=>m.jid===input.jid&&m.key).sort((a,b)=>a.timestamp-b.timestamp)[0];
     if(!oldest)throw new Error('No hay un mensaje de referencia');
     await connector.socket.fetchMessageHistory(50,oldest.key,Math.floor(oldest.timestamp/1000));
    }
    else if(path==='/api/chat/delete'){
+    if(!direct(input.jid))throw new Error('Chat inválido');
     const chat=connector.history.chat(input.jid);chat.enabled=false;chat.deleted=true;chat.classification='old';chat.name='Contacto eliminado';delete chat.earliest;delete chat.latest;connector.history.save(chat);
     for(const m of store.list('owner','messages',-1))if(connector.history.canonical(m.jid)===chat.jid)store.remove('owner','messages',m.id);
     for(const j of store.list('owner','queue',-1))if(connector.history.canonical(j.jid)===chat.jid)store.remove('owner','queue',j.id);

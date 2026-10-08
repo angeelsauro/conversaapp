@@ -4,3 +4,7 @@ node_modules
 deploy
 *.log
 test
+.git
+.github
+*.cvb
+*.md

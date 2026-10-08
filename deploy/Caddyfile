@@ -1,4 +1,8 @@
 {$CONVERSA_DOMAIN} {
+  # Administración restringida: solo estas IP/CIDR (separadas por espacios) llegan al panel.
+  # Se define con CONVERSA_ALLOWED_IPS en deploy/.env; sin valor no hay restricción por IP.
+  @outside not remote_ip {$CONVERSA_ALLOWED_IPS:0.0.0.0/0 ::/0}
+  respond @outside "Acceso restringido" 403
   encode zstd gzip
   reverse_proxy conversa:4318
 }

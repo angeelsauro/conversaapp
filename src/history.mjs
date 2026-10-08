@@ -47,7 +47,8 @@ export class History {
     if(!cutoff||msg.timestamp<cutoff) { chat.classification='old';chat.enabled=false; }
     if(msg.viewOnce&&!msg.fromMe){chat.enabled=false;chat.handoffAt=chat.handoffAt||Date.now();chat.handoffReason='view-once';}
     if(msg.fromMe && !existing?.bot) { chat.enabled=false;chat.humanAt=Date.now(); }
-    if(/^(stop|basta|parar|no me escribas|cancelar|salir)$/i.test(msg.text.trim())) { chat.optOut=true;chat.enabled=false; }
+    // Only the contact can opt out; the owner's own words (e.g. "cancelar") must not block the chat permanently.
+    if(!msg.fromMe && /^(stop|basta|parar|no me escribas|cancelar|salir)$/i.test(msg.text.trim())) { chat.optOut=true;chat.enabled=false; }
     this.save(chat);
     const seen=this.store.get(this.w,'seen',raw.key.id);
     if(!seen)this.store.put(this.w,'seen',raw.key.id,{first:msg.id});
