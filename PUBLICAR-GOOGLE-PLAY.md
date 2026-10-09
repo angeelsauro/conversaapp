@@ -13,6 +13,22 @@ Archivos que vas a usar:
 
 ---
 
+## Probar hoy, sin esperar a Google Play
+
+Requisito para ambas opciones: el servidor actualizado y la app pública abriendo en `https://[DOMINIO-APP]` (sin Cloudflare Access).
+
+**Opción A, la más rápida (2 minutos):** en el Android, abre `https://[DOMINIO-APP]` en **Chrome** → menú ⋮ → **Instalar app**. Chrome crea una app real (icono, pantalla completa, notificaciones), igual a la de Play por dentro, sin instalar archivos de origen desconocido.
+
+**Opción B, archivo .apk para instalar y compartir (10 minutos, en la PC):**
+1. Abre **pwabuilder.com** (herramienta gratuita de Microsoft), escribe `https://[DOMINIO-APP]` y pulsa **Start**.
+2. **Package for stores → Android → Generate package.** Package ID: `com.andinamusic.conversa`. En **Signing key** deja **Create new**. Descarga el .zip.
+3. Del .zip:
+   - `*.apk`: es el archivo para instalar. Pásalo al teléfono, ábrelo y permite «Instalar apps desconocidas» para ese origen.
+   - `signing.keystore` y `signing-key-info.txt`: la llave y sus contraseñas. **Guárdalas en un lugar seguro y no las envíes a nadie.** Puedes usarla luego como llave de subida en Play.
+   - `assetlinks.json`: contiene la huella SHA-256 de esa llave.
+4. Para que la app abra sin la barra de dirección, pon en el servidor esa huella (paso 7, `CONVERSA_ANDROID_SHA256`) con el paquete `com.andinamusic.conversa`. Sin esto la app funciona igual, solo que con la barra arriba.
+5. Si después instalas la versión de Play, desinstala antes esta: están firmadas con llaves distintas.
+
 ## Antes de empezar (comprobaciones)
 
 1. La web está publicada en `https://[DOMINIO-APP]` y **cualquiera** puede abrirla. Si delante hay Cloudflare Access u otro inicio de sesión, la app de Android no funcionará y Google no podrá revisarla.
