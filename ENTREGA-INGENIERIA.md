@@ -301,3 +301,8 @@ Pedido del propietario: quitar textos innecesarios para que se vea moderna y lim
   - 10 nuevas de seguridad de cuentas.
 - Navegador real: 62 comprobaciones del panel, 18 del recorrido del cliente, 63 de la demo y 14 de la marca (elegir un logo listo, guardar, ver el cambio en menú, pestaña, manifiesto e iOS, restaurar, y comprobar que la app de clientes no carga los logos). Todas aprobadas.
 - El icono de la app de Google Play viene del paquete Android; la marca cambia la app web instalada desde el navegador.
+
+### Corrección tras la primera prueba real del registro
+
+- Al escribir el código en el teléfono, WhatsApp respondía «No se puede vincular el dispositivo». El motivo: la vinculación con código rechaza nombres de dispositivo no estándar, y Conversa se presentaba como «Desktop (Conversa)». La vinculación por QR no lo valida, por eso el panel sí funcionaba.
+- Las cuentas de clientes se presentan ahora como «Chrome (Ubuntu)». El aviso que llega al chat «Mensaje a ti mismo» lo explica, para que el cliente no lo confunda con un intruso. El panel del propietario conserva su identidad.

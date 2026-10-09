@@ -1,9 +1,13 @@
-import makeWASocket, { initAuthCreds, BufferJSON, proto, DisconnectReason, makeCacheableSignalKeyStore, getMediaKeys } from '@whiskeysockets/baileys';
+import makeWASocket, { initAuthCreds, BufferJSON, proto, DisconnectReason, makeCacheableSignalKeyStore, getMediaKeys, Browsers } from '@whiskeysockets/baileys';
 import {createHmac,createDecipheriv,timingSafeEqual} from 'node:crypto';
 import pino from 'pino';
 import QRCode from 'qrcode';
 import {History,messageRecord,safeMediaPath} from './history.mjs';
 const logger=pino({level:'silent'});
+// How the device appears in WhatsApp → Linked devices. Linking with a code (client accounts) only accepts a real
+// browser and OS name: a custom one like «Conversa» makes the phone answer «Couldn't link device». The owner's
+// panel, linked by QR, keeps its existing identity.
+export const browserFor=workspace=>workspace==='owner'?['Conversa','Desktop','2.0.0']:Browsers.ubuntu('Chrome');
 export function authState(store,workspace,active=()=>true) {
  const read=id=>{if(!active())throw new Error('STALE_SESSION');const v=store.get(workspace,'auth',id);return v?JSON.parse(v,BufferJSON.reviver):null;};
  const write=(id,v)=>{if(!active())throw new Error('STALE_SESSION');store.put(workspace,'auth',id,JSON.stringify(v,BufferJSON.replacer));};
@@ -41,7 +45,7 @@ export class Connector {
   const active=()=>this.epoch===epoch, auth=authState(this.store,this.workspace,active);
   const guard=fn=>(...args)=>{if(!active())return;try{Promise.resolve(fn(...args)).catch(()=>{if(active())this.fail('No se pudo conservar la sesión o un mensaje. Revisa almacenamiento y reinicia el servicio.');});}catch{if(active())this.fail('No se pudieron guardar datos. Revisa el almacenamiento.');}};
   try {
-   const sock=this.factory({auth:{creds:auth.state.creds,keys:makeCacheableSignalKeyStore(auth.state.keys,logger)},logger,browser:['Conversa','Desktop','2.0.0'],markOnlineOnConnect:false,syncFullHistory:true,shouldSyncHistoryMessage:()=>true,getMessage:async key=>{const m=this.store.get(this.workspace,'messages',`${key.remoteJid}:${key.id}`);return m?.text?{conversation:m.text}:undefined;}});
+   const sock=this.factory({auth:{creds:auth.state.creds,keys:makeCacheableSignalKeyStore(auth.state.keys,logger)},logger,browser:browserFor(this.workspace),markOnlineOnConnect:false,syncFullHistory:true,shouldSyncHistoryMessage:()=>true,getMessage:async key=>{const m=this.store.get(this.workspace,'messages',`${key.remoteJid}:${key.id}`);return m?.text?{conversation:m.text}:undefined;}});
    this.socket=sock;
    sock.ev.on('creds.update',guard(()=>auth.save()));
    sock.ev.on('connection.update',guard(u=>this.update(u,epoch)));

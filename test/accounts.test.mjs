@@ -135,3 +135,9 @@ test('connector: pairing code for the account\'s number; a code used from anothe
   assert.equal(c.status,'disconnected');assert.match(c.note,/caducó/);assert.equal(c.snapshot().pairingCode,null);
  }finally{store.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('linking with a code identifies as a real browser (WhatsApp rejects custom names); the owner keeps its identity',async()=>{
+ const {browserFor}=await import('../src/connector.mjs');
+ assert.deepEqual(browserFor('owner'),['Conversa','Desktop','2.0.0']);
+ const client=browserFor('u_0123456789abcdef');assert.equal(client[0],'Ubuntu');assert.equal(client[1],'Chrome');
+});

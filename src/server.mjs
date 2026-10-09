@@ -369,7 +369,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  let closed=false,monitor,watch,avatarTimer,sweeper,lastStatus;const signals=new Map();
  // The phone's own chat hears about every new link, so a number registered by someone else is noticed at once.
  function linkNotice(t,a){const messageId=randomBytes(16).toString('hex').toUpperCase();t.connector.history?.skip?.(messageId);
-  Promise.resolve(t.connector.socket?.sendMessage(a.number+'@s.whatsapp.net',{text:'Conversa quedó vinculada a este WhatsApp. Si no fuiste tú, ciérrala en WhatsApp → Dispositivos vinculados.'},{messageId})).catch(()=>{});}
+  Promise.resolve(t.connector.socket?.sendMessage(a.number+'@s.whatsapp.net',{text:'Conversa quedó vinculada a este WhatsApp. En Dispositivos vinculados aparece como «Chrome (Ubuntu)». Si no fuiste tú, ciérrala ahí.'},{messageId})).catch(()=>{});}
  // Every minute: expired limits and presence go away, and sign-ups never confirmed on the phone free their number and place after 30 minutes.
  async function housekeeping(now=Date.now()){
   for(const [k,v] of limits)if(now-v.start>v.window)limits.delete(k);for(const [k,seen] of visible)if(now-seen>75000)visible.delete(k);for(const [n,r] of recoveries)if(r.expires<now)recoveries.delete(n);
