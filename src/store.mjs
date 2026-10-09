@@ -13,7 +13,8 @@ export class Store {
     this.key = readFileSync(keyPath);
     if(this.key.length!==32) throw new Error('Encryption key must be 32 bytes');
     this.db = new DatabaseSync(join(dir, 'conversa.sqlite'));
-    this.db.exec('PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS records (workspace TEXT NOT NULL, bucket TEXT NOT NULL, id TEXT NOT NULL, value BLOB NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY(workspace,bucket,id));');
+    // synchronous=FULL: every committed write (including WhatsApp session keys) survives a power cut.
+    this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS records (workspace TEXT NOT NULL, bucket TEXT NOT NULL, id TEXT NOT NULL, value BLOB NOT NULL, updated INTEGER NOT NULL, PRIMARY KEY(workspace,bucket,id));');
     // Migrate searchable identifiers without changing encrypted payload semantics.
     const version=this.db.prepare('PRAGMA user_version').get().user_version;
     if(version<1) {

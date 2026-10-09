@@ -130,12 +130,22 @@ Fase 1 de la auditoría de interfaz: el panel funciona como un chat de mensajer�
 - Diseño: iconos SVG propios en lugar de caracteres (se ven igual en Android, iOS y Windows), avatares redondos con degradado, fondo con textura, menú «Mensajes, Mi bot, Conexión» y barra inferior con insignia en el móvil. Texto mínimo de 11 a 12 px (antes 10 px) y gris secundario más oscuro, para un contraste mayor. Animación solo en el mensaje que acaba de llegar, desactivada con «reducir movimiento».
 - Corrección: el mismo mensaje recibido con las dos direcciones del contacto (PN y LID) se guardaba dos veces. Ahora se guarda una sola copia.
 - API: GET /api/chat/messages, POST /api/chat/send y POST /api/chat/read (ver API-REVISION.md).
+- Vinculación persistente: antes, Conversa podía perder la vinculación de WhatsApp sin que el propietario la quitara, por tres causas.
+  - El conector borraba la sesión ante el código 500 («bad session»). Baileys asigna ese código a cualquier `stream:error` sin código conocido y a `failure` sin motivo, que suelen ser fallos pasajeros. Ahora la sesión solo se borra con 401 (loggedOut) o con el conflicto `device_removed`, es decir, cuando el propietario quita Conversa en Dispositivos vinculados. Lo demás reconecta con espera exponencial (máximo 60 s) y conserva las claves; tras 5 intentos fallidos, el panel lo explica.
+  - El código 440 (otra conexión con la misma vinculación) dejaba la pausa guardada, así que tras un reinicio no se reconectaba. Ahora pausa solo el proceso actual y un reinicio reanuda.
+  - Un error local (almacenamiento o arranque del socket) dejaba WhatsApp apagado hasta reiniciar. Ahora reintenta al minuto, salvo pausa o desvinculación explícitas.
+- Reinicio tras corte de luz: en el contenedor (con `init: true`) node recibe siempre el mismo PID. Si el bloqueo `server.lock` del proceso muerto coincidía en PID y en instante de arranque, Conversa se negaba a arrancar. Ahora un bloqueo con el PID propio que este proceso no tomó se considera abandonado.
+- SQLite usa `synchronous=FULL` de forma explícita: cada escritura confirmada, incluidas las claves de sesión de WhatsApp, sobrevive a un corte de luz.
 
 ### Verificación de esta versión
 
-- `npm test`: 28 pruebas aprobadas, 0 fallidas (4 nuevas en test/chat-panel.test.mjs: último mensaje, no leídos, deduplicación PN/LID, relleno inicial, envío manual con respuesta confirmada, sin confirmar y sin conexión, y rutas HTTP).
+- `npm test`: 34 pruebas aprobadas, 0 fallidas.
+  - 4 nuevas en test/chat-panel.test.mjs: último mensaje, no leídos, deduplicación PN/LID, relleno inicial, envío manual (confirmado, sin confirmar y sin conexión) y rutas HTTP.
+  - 6 nuevas en test/session-persistence.test.mjs: errores 500/503/408/428 conservan la vinculación, reinicio sin QR nuevo, 440 sin pausa permanente, desvinculación solo con 401 o `device_removed`, reintento tras fallo local, y bloqueo con el mismo PID tras reiniciar. Con el código anterior fallan 5 de estas 6; la del reinicio sin QR ya pasaba.
 - Navegador real (Chromium/Playwright) contra `npm run preview` y contra `dist/conversa-demo.html`, 37 y 38 comprobaciones aprobadas. Incluyen:
   - insignia y título con no leídos, «Bot:» y «Tú:» en la lista, separador de no leídos y marcado como leído;
   - tarjetas de foto y voz, envío con Enter y marca de enviado, Mayús+Enter, y menú de respuestas guardadas que inserta el texto sin enviarlo;
   - campo de escritura visible y con letra de 16 px en móviles de 375, 390 y 430 píxeles, sin desplazamiento horizontal y sin errores de JavaScript.
-- Pendiente: probarlo en el servidor real con WhatsApp vinculado. Un mensaje enviado desde el panel debe llegar una sola vez al contacto y verse con su marca en el panel.
+- Pendiente en el servidor real:
+  - enviar un mensaje desde el panel y comprobar que llega una sola vez y que el panel muestra su marca;
+  - reiniciar el VPS (`reboot`) y comprobar que WhatsApp vuelve a «Conectado» sin QR nuevo.

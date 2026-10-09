@@ -55,6 +55,22 @@ Te pedirá tres datos: el token de GitHub, el subdominio completo (por ejemplo `
 3. En el panel, ve a **Conexión** → **Generar QR** y escanéalo con WhatsApp → **Dispositivos vinculados**.
 4. Si la prueba de antes se hizo con tu número, no vuelvas a vincularlo en otro lugar al mismo tiempo.
 
+## ¿Cuándo se desvincula WhatsApp?
+
+Una vez vinculado, Conversa conserva la vinculación en el servidor y vuelve a conectarse solo, sin QR nuevo:
+
+- si el servidor se reinicia, se apaga o se corta la luz (Docker lo arranca de nuevo al encender);
+- si actualizas Conversa con la línea del paso 5;
+- si WhatsApp o internet fallan un rato: reintenta sin parar, cada vez más espaciado, hasta un minuto entre intentos;
+- si apagas tu computadora o tu teléfono: el servidor sigue recibiendo mensajes.
+
+Solo se desvincula en estos casos:
+
+- **Lo quitas tú:** en el teléfono, desde **Dispositivos vinculados** → Conversa → **Cerrar sesión**, o en el panel con **Desvincular**.
+- **Regla de WhatsApp:** si no usas WhatsApp en el teléfono durante unos 14 días, WhatsApp cierra todos los dispositivos vinculados. Abre WhatsApp en el teléfono de vez en cuando.
+
+**Pausar recepción** también se mantiene tras un reinicio, porque lo pediste tú. Para volver, pulsa **Reanudar conexión**.
+
 ## Actualizar o revisar
 
 - **Actualizar:** vuelve a pegar la misma línea del paso 5, con un token de GitHub vigente. Se conservan los datos, las claves y la sesión de WhatsApp.

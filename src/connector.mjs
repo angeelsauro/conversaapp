@@ -48,7 +48,11 @@ export class Connector {
    sock.ev.on('messaging-history.status',guard(event=>{this.store.put(this.workspace,'settings','history',{...this.store.get(this.workspace,'settings','history'),updatedAt:Date.now(),phaseStatus:event.status,explicit:event.explicit,complete:false});}));
   }catch{this.fail('No se pudo iniciar la conexión. Revisa el servicio.');}
  }
- fail(note){++this.epoch;this.status='error';this.qr=null;this.qrExpiresAt=null;this.note=note;clearTimeout(this.retryTimer);clearTimeout(this.qrTimer);this.socket?.end(new Error('Stopped'));this.socket=null;}
+ fail(note){++this.epoch;this.status='error';this.qr=null;this.qrExpiresAt=null;this.note=note;clearTimeout(this.retryTimer);clearTimeout(this.qrTimer);this.socket?.end(new Error('Stopped'));this.socket=null;
+  // A linked session retries in a minute after a local failure; only an explicit pause or unlink stops reconnecting.
+  let linked=false;try{linked=!!this.store.get(this.workspace,'auth','creds')&&this.store.get(this.workspace,'settings','connection')?.active!==false;}catch{}
+  if(linked){const epoch=this.epoch;this.retryTimer=setTimeout(()=>{if(this.epoch===epoch)this.connect(true).catch(()=>{});},60000);this.retryTimer.unref?.();}
+ }
  async update(update,epoch){
   if(this.epoch!==epoch)return;
   if(update.qr){const image=await QRCode.toDataURL(update.qr,{width:300,margin:2,errorCorrectionLevel:'M'});if(this.epoch!==epoch)return;this.qr=image;this.status='qr';this.qrExpiresAt=Date.now()+55000;clearTimeout(this.qrTimer);this.qrTimer=setTimeout(()=>{if(this.epoch===epoch){this.qr=null;this.qrExpiresAt=null;}},55000);this.qrTimer.unref?.();}
@@ -61,10 +65,14 @@ export class Connector {
   if(update.connection==='close'){
    // Invalidate key stores immediately, before any cleanup or retry.
    ++this.epoch;this.socket=null;this.qr=null;this.qrExpiresAt=null;clearTimeout(this.qrTimer);
-   const code=update.lastDisconnect?.error?.output?.statusCode;
-   if(code===DisconnectReason.loggedOut||code===DisconnectReason.badSession){this.desired(false);this.store.clear(this.workspace,'auth');this.status='disconnected';this.identity=null;this.note='WhatsApp revocó la sesión. Es necesario escanear otro QR.';return;}
-   if(code===DisconnectReason.connectionReplaced){this.desired(false);this.status='paused';this.note='La sesión se abrió en otro servidor. Esta instancia queda pausada.';return;}
-   this.retries++;this.status='reconnecting';this.note='Reconexión automática en curso…';const nextEpoch=this.epoch;
+   const error=update.lastDisconnect?.error,code=error?.output?.statusCode,detail=error?.data;
+   // The link ends only when WhatsApp revokes this device: the owner removed it in Linked devices (401, or a
+   // device_removed conflict). Generic stream errors arrive as 500 "bad session" and are usually transient, so
+   // they keep the keys and reconnect like any other drop.
+   if(code===DisconnectReason.loggedOut||(detail?.tag==='conflict'&&detail?.attrs?.type==='device_removed')){this.desired(false);this.store.clear(this.workspace,'auth');this.status='disconnected';this.identity=null;this.retries=0;this.note='Conversa se quitó de Dispositivos vinculados en tu teléfono. Escanea otro QR para volver a vincularlo.';return;}
+   // Another client is using this same link. Pause without persisting it: a restart resumes on its own.
+   if(code===DisconnectReason.connectionReplaced){this.status='paused';this.note='Se abrió otra conexión con esta misma vinculación (otro servidor o una copia de los datos). Conversa se pausó para no competir con ella; pulsa «Reanudar conexión» si ya no existe.';return;}
+   this.retries++;this.status='reconnecting';this.note=this.retries>=5?'WhatsApp no acepta la conexión por ahora. Conversa conserva la vinculación y sigue reintentando; si en el teléfono ya no aparece en Dispositivos vinculados, desvincula aquí y escanea otro QR.':'Reconexión automática en curso…';const nextEpoch=this.epoch;
    this.retryTimer=setTimeout(()=>{if(this.epoch===nextEpoch)this.connect(true).catch(()=>this.fail('No se pudo recuperar la sesión.'));},Math.min(1000*2**Math.min(this.retries,6),60000)+Math.floor(Math.random()*2000));this.retryTimer.unref?.();
   }
  }
