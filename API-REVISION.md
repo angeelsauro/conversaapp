@@ -66,19 +66,30 @@ En producción, cada dirección solo acepta su tipo de acceso. En local, `127.0.
   - Crea la cuenta (contraseña con scrypt) y abre una sesión de 30 días.
   - Pide a WhatsApp un **código de vinculación** para ese número y devuelve {pairingCode} (o aparece en /api/state).
   - Si la vinculación se completa con otro número, se deshace al instante.
-  - Límites: 5 registros por hora por IP y `CONVERSA_MAX_ACCOUNTS` en total (503 si se alcanza).
-  - Un número ya vinculado da 409. Un registro sin terminar puede rehacerse pasados 30 minutos.
+  - Límites: 5 registros por hora por IP (IPv6 por /64), 5 códigos por hora por número (registro y /api/connect juntos) y `CONVERSA_MAX_ACCOUNTS` en total (503 si se alcanza).
+  - Un número ya vinculado da 409, igual que dos registros simultáneos del mismo número. Un registro sin terminar puede rehacerse pasados 10 minutos y se borra solo a los 30 (libera el número y la plaza).
+  - Al vincularse, el chat «Mensaje a ti mismo» del teléfono recibe un aviso; ese mensaje no se guarda en la bandeja.
 - **POST /api/account/login {number, password}:** misma respuesta para un número inexistente y una contraseña errónea. Límites: 10 por minuto por IP y 10 cada 15 minutos por número.
 - **POST /api/account/recover {number}:**
-  - Si el WhatsApp de la cuenta está conectado, envía un código de 6 cifras al chat «Mensaje a ti mismo» del cliente y devuelve {method:'code'}. Si no, devuelve {method:'support'}.
+  - Si el WhatsApp de la cuenta está conectado, envía un código de 6 cifras al chat «Mensaje a ti mismo» del cliente y devuelve {method:'code'}. Si no, devuelve {method:'support'}. El mensaje con el código no se guarda en la bandeja.
   - POST /api/account/recover/verify {number, code, password} cambia la contraseña y cierra las demás sesiones. El código dura 10 minutos y admite 5 intentos.
-- **POST /api/account/password {current, password}:** cambia la contraseña y cierra las demás sesiones.
+- **POST /api/account/password {current, password}:** cambia la contraseña y cierra las demás sesiones, con sus notificaciones. Límites: 5 cada 15 minutos por cuenta y 20 por hora por IP.
 - **POST /api/account/delete {password}:** desvincula el dispositivo en WhatsApp y borra todo el espacio (`Store.purge`), la cuenta, el número y las sesiones. Responde con `Clear-Site-Data`. La cuenta demo no se puede borrar.
 - **POST /api/connect** (cliente): sin vinculación vigente, pide un código nuevo (6 por hora). Si no, reconecta.
 - **GET /api/admin/accounts** (solo propietario): número enmascarado, fecha, vinculación y estado. Nunca mensajes.
 - **GET /.well-known/assetlinks.json:** a partir de `CONVERSA_ANDROID_PACKAGE` y `CONVERSA_ANDROID_SHA256` (huellas separadas por comas), para la app Android (TWA).
 - **GET /legal/*.html|css:** páginas públicas de privacidad, condiciones y eliminación de cuenta.
 - **/api/state** añade `role` ('owner'|'client') y `account` ({number, linked, demo, createdAt}). Mientras la cuenta no está vinculada, no incluye chats ni mensajes.
+- **Lecturas pesadas:** /api/chat/messages, /api/chat/media y /api/contact admiten 240 por minuto por espacio; /api/export, 5 cada 10 minutos.
+- **POST /api/presence:** como máximo 6 pestañas por sesión.
+
+## Marca propia (0.5.1, solo propietario)
+
+- **POST /api/brand {name, icon192?, icon512?}:** nombre (1 a 30 caracteres) y logo como dos PNG cuadrados exactos de 192 y 512 px (data:image/png;base64, máx. 250 KB y 900 KB), hechos en el navegador. Sin logo nuevo se conserva el anterior. {reset:true} vuelve a Conversa. Para un cliente responde 404 (más adelante será opción de pago).
+- **/api/state** añade `brand` ({name, icon, updatedAt} o null) y `brandEditable`.
+- **GET /manifest.webmanifest, /brand/icon-192.png y /brand/icon-512.png:** con la sesión del propietario en el panel, el nombre y el icono de la marca; para cualquier otro, los de Conversa.
+- **GET /brand/preset/{nombre}.svg:** 10 logos genéricos (bloques, gema, dados, planeta, burbujas, calculadora, calendario, notas, clima, reloj), solo con la sesión del propietario; si no, 404.
+- Las notificaciones usan el nombre de la marca en el modo oculto y su icono.
 
 ## Mutaciones autenticadas
 

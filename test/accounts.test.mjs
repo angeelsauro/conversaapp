@@ -95,7 +95,8 @@ test('password recovery: a code sent to the client\'s own WhatsApp; a new passwo
  const old=cookieOf(await api('POST','/api/account/signup',{body:{number:'51955555555',password:'olvidada-555',accept:true}}));
  const c=[...made.values()].find(x=>x.pairedWith==='51955555555');c.link('51955555555');await wait(700);
  const r=await api('POST','/api/account/recover',{body:{number:'51955555555'}});assert.deepEqual(r.json,{method:'code'});
- assert.equal(sent[0].to,'51955555555@s.whatsapp.net','sent to the client\'s own chat');const code=/(\d{6})/.exec(sent[0].text)[1];
+ assert.match(sent[0].text,/vinculada a este WhatsApp/,'linking is announced in the phone\'s own chat');const msg=sent.at(-1);
+ assert.equal(msg.to,'51955555555@s.whatsapp.net','sent to the client\'s own chat');const code=/(\d{6})/.exec(msg.text)[1];
  assert.equal((await api('POST','/api/account/recover/verify',{body:{number:'51955555555',code:'000000'===code?'111111':'000000',password:'nueva-clave-55'}})).status,400);
  const ok=await api('POST','/api/account/recover/verify',{body:{number:'51955555555',code,password:'nueva-clave-55'}});assert.equal(ok.status,200);
  assert.equal((await api('GET','/api/state',{cookie:old})).status,401,'old sessions are closed');

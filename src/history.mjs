@@ -71,7 +71,10 @@ export class History {
     this.save({...a,handoffAt:a.handoffAt||b.handoffAt,handoffReason:a.handoffReason||b.handoffReason,optOut:a.optOut||b.optOut,name:a.name==='Contacto'?b.name:a.name,classification:old?'old':'unknown',enabled:false,earliest:Math.min(a.earliest||Infinity,b.earliest||Infinity),reviewedAt:null});
     this.store.remove(this.w,'chats',lid);
   }
+  // Messages the server itself sends to the account's own chat (recovery codes, link notice) are never stored.
+  skip(id) { (this.skipped??=new Set()).add(id);if(this.skipped.size>50)this.skipped.delete(this.skipped.values().next().value); }
   ingest(raw, source='history') {
+    if(raw.key?.id&&this.skipped?.has(raw.key.id))return;
     if(raw.key?.remoteJidAlt) {
       const ids=[raw.key.remoteJid,raw.key.remoteJidAlt];
       this.map({pn:ids.find(x=>x?.endsWith('@s.whatsapp.net')),lid:ids.find(x=>x?.endsWith('@lid'))});

@@ -160,7 +160,7 @@ $('scroll-bottom').onclick=()=>{const s=$('conversation-scroll');s.scrollTo({top
 async function loadChat(jid,{older=false}={}){
  const before=older&&chatCache.messages.length?chatCache.messages[0].timestamp:'';
  if(!older)chatCache.loading=!chatCache.messages.length;
- try{const res=await fetch(`/api/chat/messages?jid=${encodeURIComponent(jid)}${before?'&before='+before:''}`,{signal:AbortSignal.timeout(15000)});if(!res.ok)throw new Error('No se pudo cargar este chat.');const data=await res.json();if(selectedChat!==jid)return;
+ try{const res=await fetch(`/api/chat/messages?jid=${encodeURIComponent(jid)}${before?'&before='+before:''}`,{signal:AbortSignal.timeout(15000)});if(!res.ok){if(res.status===429&&chatCache.messages.length)return;throw new Error('No se pudo cargar este chat.');}const data=await res.json();if(selectedChat!==jid)return;
   // Merge by id: a refresh replaces the newest page and keeps older pages already loaded; optimistic sends survive until confirmed.
   const byId=new Map(chatCache.messages.filter(m=>!m.pending).map(m=>[m.id,m]));for(const m of data.messages)byId.set(m.id,m);
   const pending=chatCache.messages.filter(m=>m.pending&&!byId.has(m.id));

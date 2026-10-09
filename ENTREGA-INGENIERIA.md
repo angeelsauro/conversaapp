@@ -275,3 +275,29 @@ Decisión del propietario: publicar en Google Play para clientes nuevos (cuenta 
   - 18 comprobaciones del recorrido del cliente: bienvenida, aviso obligatorio, código, apertura al vincular, ajustes, salir y entrar, contraseña errónea, recuperación, eliminar cuenta y la política de privacidad pública;
   - 62 comprobaciones del panel del propietario y 63 de la demo, sin regresiones.
 - Pendiente: probarlo con un número real en el servidor (código de WhatsApp real), revisión de seguridad independiente del cambio y publicación en Google Play (ver PUBLICAR-GOOGLE-PLAY.md).
+
+## Versión 0.5.1 (9 de octubre de 2026): interfaz limpia, marca propia y correcciones de seguridad
+
+Pedido del propietario: quitar textos innecesarios para que se vea moderna y limpia, y poder cambiar el nombre y el logo de la app solo como super admin, con logos genéricos listos (juegos, calculadora, calendario…). Para los clientes será una opción de pago más adelante.
+
+### Cambios
+
+- **Interfaz:**
+  - Avisos flotantes de 3 a 5 segundos en lugar de líneas de estado fijas.
+  - Fuera textos de relleno: notas al pie, explicaciones repetidas, el contador de conversaciones y el estado del historial.
+  - Ajustes en dos columnas en pantallas grandes; con WhatsApp conectado desaparecen los pasos para vincular.
+  - Cabecera móvil compacta con el nombre de la app; la lista de chats llena la pantalla hasta la barra inferior.
+- **Marca propia (solo super admin):**
+  - En Ajustes → Marca: nombre, logo subido (recortado a cuadrado en el navegador) o uno de 10 logos genéricos sin texto (bloques, gema, dados, planeta, burbujas, calculadora, calendario, notas, clima, reloj).
+  - Cambia el menú, la pestaña, el favicon, el icono y el nombre de la app instalada, y el título e icono de las notificaciones.
+  - Las cuentas de clientes no ven la opción ni cargan los logos, y el servidor la rechaza para ellas.
+- **Seguridad:** todas las correcciones de la revisión independiente de 0.5.0 (ver SEGURIDAD-PUBLICACION.md).
+- **Google Play:** páginas legales, ficha, capturas con la interfaz nueva, `android/twa-manifest.json` y PUBLICAR-GOOGLE-PLAY.md, con marcadores a completar.
+
+### Verificación
+
+- `npm test`: 78 pruebas aprobadas, 0 fallidas.
+  - 3 nuevas de marca: solo el propietario, PNG validados, manifiesto e iconos, logos listos, notificaciones.
+  - 10 nuevas de seguridad de cuentas.
+- Navegador real: 62 comprobaciones del panel, 18 del recorrido del cliente, 63 de la demo y 14 de la marca (elegir un logo listo, guardar, ver el cambio en menú, pestaña, manifiesto e iOS, restaurar, y comprobar que la app de clientes no carga los logos). Todas aprobadas.
+- El icono de la app de Google Play viene del paquete Android; la marca cambia la app web instalada desde el navegador.

@@ -94,6 +94,23 @@ Alternativa sin Cloudflare: el `compose.yaml` original con Caddy y `CONVERSA_ALL
 - **Borrado:** «Eliminar cuenta» desvincula el dispositivo y borra al instante todo lo del cliente en la base de datos. Las copias de seguridad cifradas lo conservan hasta su rotación.
 - **Riesgo aceptado por Andina Music:** la conexión no oficial puede llevar a que WhatsApp restrinja números de clientes. La app lo advierte antes de vincular y exige aceptarlo.
 
+### Revisión independiente de 0.5.0 y correcciones (0.5.1)
+
+Una revisión con ataques reales sobre el servidor encontró 9 problemas. Todos están corregidos y tienen pruebas en `test/security-accounts.test.mjs`:
+
+- **Límites que se podían usar para frenar el servidor:** ahora se comprueba primero la IP, el mapa de límites tiene tope y se limpia cada minuto. Las IPv6 cuentan por /64.
+- **Registros falsos que llenaban las plazas:** un registro no vinculado se borra a los 30 minutos y libera número y plaza.
+- **Notificaciones de sesiones cerradas:** cambiar o recuperar la contraseña cierra también sus notificaciones, presencia y conexiones en vivo.
+- **Código de recuperación visible en la bandeja:** el mensaje con el código ya no se guarda, así que una cookie robada no basta para leerlo.
+- **Adivinar la contraseña con una sesión abierta:** cambiar la contraseña tiene límite por cuenta y por IP.
+- **Escrituras tras eliminar una cuenta:** una petición lenta ya no devuelve datos a un espacio borrado ni recrea la cuenta.
+- **Dos registros simultáneos del mismo número:** solo uno prospera.
+- **Presencia sin tope:** máximo 6 pestañas por sesión.
+- **Contraseña de la cuenta demo:** cambiarla en los ajustes del servidor surte efecto al reiniciar.
+- **Registrar un número ajeno (riesgo de diseño):** máximo 5 códigos por hora por número, y cada vinculación avisa en el chat «Mensaje a ti mismo» del teléfono, para que el dueño real lo note y la cierre.
+- **Lecturas pesadas:** chat, archivos, perfil y exportación tienen límite por espacio.
+- **Marca propia:** solo el propietario puede cambiarla; los logos listos solo se sirven con su sesión, y el logo subido se valida como PNG del tamaño exacto.
+
 ## 4. Riesgos que quedan para la prueba publicada
 
 | Riesgo | Qué hacer |

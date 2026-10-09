@@ -28,6 +28,8 @@ const TERMS_VERSION='2026-10-09';
 // Custom brand (name + logo): for now only the owner (super admin); later a paid option for client accounts.
 const brandAllowed=ctx=>ctx?.role==='owner';
 const pngSize=b=>b.length>24&&b.readUInt32BE(0)===0x89504e47&&b.readUInt32BE(4)===0x0d0a1a0a&&b.toString('latin1',12,16)==='IHDR'?[b.readUInt32BE(16),b.readUInt32BE(20)]:null;
+// Rate limits count IPv4 clients by address and IPv6 clients by /64 (one home or mobile network).
+export function clientKey(ip){ip=String(ip||'').split('%')[0];const v4=/^(?:::ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);if(v4)return v4[1];if(!ip.includes(':'))return ip;const [head,tail='']=ip.split('::'),a=head?head.split(':'):[],b=tail?tail.split(':'):[],full=[...a,...Array(Math.max(0,8-a.length-b.length)).fill('0'),...b];return full.slice(0,4).map(x=>(x.toLowerCase().replace(/^0+(?=.)/,''))).join(':')+'::/64';}
 export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data'),port=4318,connectorFactory,respond,publicOrigin=process.env.PUBLIC_ORIGIN||undefined,appOrigin=process.env.APP_ORIGIN||undefined,testEndpoints=testEndpointsEnabled(),pushSender=sendPush,avatarFetch=globalThis.fetch,maxAccounts=Number(process.env.CONVERSA_MAX_ACCOUNTS||30),trustProxyIp=process.env.CONVERSA_TRUST_CF==='1',android={package:process.env.CONVERSA_ANDROID_PACKAGE,sha256:process.env.CONVERSA_ANDROID_SHA256},demoAccount=process.env.CONVERSA_DEMO_ACCOUNT||undefined,demoFactory}={}) {
  const production=process.env.NODE_ENV==='production';
  if(production&&(!publicOrigin?.startsWith('https://')||!process.env.CONVERSA_KEY_FILE||!process.env.CONVERSA_OWNER_TOKEN_FILE))throw new Error('Production requires HTTPS origin and external secret files');
@@ -39,9 +41,10 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  if(!existsSync(tokenPath))writeFileSync(tokenPath,randomBytes(32).toString('hex'),{flag:'wx',mode:0o600});
  const token=readFileSync(tokenPath,'utf8').trim();if(!/^[a-f0-9]{64}$/.test(token))throw new Error('Owner access must be a 256-bit hexadecimal secret');
  // Live updates: any write a panel shows wakes that workspace's open panels through /api/events, coalesced every 120 ms.
- const streams=new Set(),visible=new Map(),dirty=new Set();let version=0,flush=null;
+ const streams=new Set(),visible=new Map(),dirty=new Set(),gone=new Set();let version=0,flush=null;
  const changed=(w='owner')=>{version++;dirty.add(w);if(flush)return;flush=setTimeout(()=>{flush=null;for(const s of streams)if(dirty.has(s.w))s.res.write(`event: change\ndata: ${version}\n\n`);dirty.clear();},120);flush.unref?.();};
- for(const name of ['put','remove','clear']){const original=store[name].bind(store);store[name]=(w,b,...rest)=>{const result=original(w,b,...rest);if(['messages','chats','settings','queue'].includes(b))changed(w);return result;};}
+ // A deleted account's workspace never gets data back from a request or download that was still running.
+ for(const name of ['put','remove','clear']){const original=store[name].bind(store);store[name]=(w,b,...rest)=>{if(name==='put'&&gone.has(w))return;const result=original(w,b,...rest);if(['messages','chats','settings','queue'].includes(b))changed(w);return result;};}
  // Workspaces: the owner's private panel ('owner') and one isolated workspace per client account ('u_…').
  const tenants=new Map();
  function wire(t){if(t.connector.history)t.connector.history.onIncoming=(msg,chat)=>{notify(t.w,msg,chat).catch(()=>{});};}
@@ -55,7 +58,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  const accounts=()=>store.list('system','accounts',-1).filter(a=>!a.deletedAt);
  const accountByNumber=number=>{const ref=store.get('system','numbers',number);return ref&&store.get('system','accounts',ref.account);};
  // Google Play reviewers sign in with a demo account: fictional chats, nothing ever reaches WhatsApp.
- if(demoAccount&&demoFactory){const [n,...rest]=demoAccount.split(':'),number=normalizeNumber(n),password=rest.join(':');if(number&&password.length>=8&&!accountByNumber(number)){hashPassword(password).then(passwordHash=>{const a={id:'demo',w:'demo',number,passwordHash,demo:true,linked:true,createdAt:Date.now(),terms:TERMS_VERSION};store.put('system','accounts','demo',a);store.put('system','numbers',number,{account:'demo'});});}}
+ if(demoAccount&&demoFactory){const [n,...rest]=demoAccount.split(':'),number=normalizeNumber(n),password=rest.join(':');const prior=number&&accountByNumber(number);if(number&&password.length>=8&&(!prior||prior.demo)){(prior?checkPassword(password,prior.passwordHash):Promise.resolve(false)).then(same=>same||hashPassword(password).then(passwordHash=>{const a={id:'demo',w:'demo',number,passwordHash,demo:true,linked:true,createdAt:prior?.createdAt||Date.now(),terms:TERMS_VERSION};store.put('system','accounts','demo',a);store.put('system','numbers',number,{account:'demo'});}));}}
  const ownerWatching=w=>{const now=Date.now();let seen=false;for(const [k,t] of visible){if(now-t>75000)visible.delete(k);else if(k.startsWith(w+'|'))seen=true;}return seen;};
  // Push: only while no panel of that workspace is on screen, at most one per chat every 3 s. The payload is end-to-end encrypted to the device.
  // Topic and tag travel to Google/Apple: keyed HMAC of the chat, never something a phone number can be guessed from.
@@ -92,7 +95,9 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
   keep(profiles,key,photo,40);return photo;}
  // Rate limits: by IP (Cloudflare's client IP only when the tunnel is the sole way in) and by number.
  const limits=new Map();
- const limited=(key,max,windowMs)=>{const now=Date.now();if(limits.size>5000)for(const [k,v] of limits)if(now-v.start>v.window)limits.delete(k);const v=limits.get(key);if(!v||now-v.start>windowMs){limits.set(key,{count:1,start:now,window:windowMs});return false;}v.count++;return v.count>max;};
+ // Constant cost per check: expired entries are swept every minute and the map never holds more than 20 000 keys.
+ const limited=(key,max,windowMs)=>{const now=Date.now(),v=limits.get(key);if(!v||now-v.start>windowMs){limits.delete(key);if(limits.size>=20000)limits.delete(limits.keys().next().value);limits.set(key,{count:1,start:now,window:windowMs});return false;}v.count++;return v.count>max;};
+ const signingUp=new Set();
  // Password recovery: a 6-digit code sent from the client's own linked WhatsApp to their «message yourself» chat.
  const recoveries=new Map();
  const equal=(a,b)=>typeof a==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
@@ -106,12 +111,15 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  const cookie=(id,age)=>`${cookieName}=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${secure?'; Secure':''}`;
  // Client sessions last 30 days (a phone app should not ask for the password every day); the record keeps its own key for revocation.
  const startClientSession=(res,account)=>{const id=randomBytes(32).toString('hex'),key=hash(id);store.put('system','sessions',key,{id:key,expiry:Date.now()+30*86400000,account:account.id});res.setHeader('Set-Cookie',cookie(id,30*86400));};
- const dropSessions=(accountId,except)=>{for(const s of store.list('system','sessions',-1))if(s.account===accountId&&s.id&&s.id!==except)store.remove('system','sessions',s.id);};
+ // Closing sessions also stops the notifications, presence and live streams those sessions had.
+ const dropSessions=(account,except)=>{const dropped=new Set();for(const s of store.list('system','sessions',-1))if(s.account===account.id&&s.id&&s.id!==except){store.remove('system','sessions',s.id);dropped.add(s.id);}
+  if(!dropped.size)return;for(const sub of store.list(account.w,'push',-1))if(dropped.has(sub.session))store.remove(account.w,'push',sub.id);
+  for(const k of visible.keys())if(k.startsWith(account.w+'|')&&dropped.has(k.slice(account.w.length+1).split(':')[0]))visible.delete(k);endStreams(s=>dropped.has(s.sid));};
  const endStreams=match=>{for(const s of streams)if(match(s))s.res.end();};
  async function removeAccount(account){
-  const t=tenants.get(account.w);
+  const t=tenants.get(account.w);gone.add(account.w);
   if(t){try{if(t.connector.status==='connected')await t.connector.disconnect();}catch{}t.bot.stop();t.connector.pause?.(false);t.connector.stop?.();tenants.delete(account.w);}
-  dropSessions(account.id);
+  dropSessions(account);
   store.purge(account.w);store.remove('system','numbers',account.number);store.remove('system','accounts',account.id);
   forget(account.w+'|');for(const k of profiles.keys())if(k.startsWith(account.w+'|'))profiles.delete(k);for(const k of visible.keys())if(k.startsWith(account.w+'|'))visible.delete(k);endStreams(s=>s.w===account.w);recoveries.delete(account.number);
  }
@@ -122,7 +130,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
   const host=req.headers.host;if(!hosts.has(host))return json(403,{error:'Host no permitido.'});
   // The public app (and its legal pages) may be indexed; the private panel never.
   if(!appHosts.has(host)||publicOrigin===undefined)res.setHeader('X-Robots-Tag','noindex, nofollow');
-  const url=new URL(req.url,'http://localhost'),path=url.pathname,ip=trustProxyIp&&typeof req.headers['cf-connecting-ip']==='string'?req.headers['cf-connecting-ip'].slice(0,64):req.socket.remoteAddress;
+  const url=new URL(req.url,'http://localhost'),path=url.pathname,ip=clientKey(trustProxyIp&&typeof req.headers['cf-connecting-ip']==='string'?req.headers['cf-connecting-ip'].slice(0,64):req.socket.remoteAddress);
   try {
    if(req.method==='GET'&&path==='/healthz')return json(200,{ok:true});
    if(req.method==='GET'&&(['/manifest.webmanifest','/brand/icon-192.png','/brand/icon-512.png'].includes(path)||/^\/brand\/preset\/[a-z]{1,20}\.svg$/.test(path))){
@@ -148,6 +156,9 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    const w=ctx?.w,c=ctx?.connector,b=ctx?.bot;
    if(req.method==='GET'){
     if(!ctx)return json(401,{error:'Entra con tu acceso privado.'});
+    // Routes that read a workspace's whole message store: generous for a person, a wall for a script.
+    if(['/api/chat/messages','/api/chat/media','/api/contact'].includes(path)&&limited('heavy|'+w,240,60000))return json(429,{error:'Demasiadas solicitudes. Espera un momento.'});
+    if(path==='/api/export'&&limited('export|'+w,5,600000))return json(429,{error:'Exportaste hace poco. Inténtalo en unos minutos.'});
     if(path==='/api/state'){const pending=ctx.role==='client'&&!ctx.account.linked;
      return json(200,{connection:c.snapshot(),messages:pending?[]:store.list(w,'messages',100).map(m=>({...lite(m),conversationJid:c.history.canonical(m.jid)})),totalMessages:store.count(w,'messages'),chats:pending?[]:store.list(w,'chats',2000),totalChats:store.count(w,'chats'),bot:{...b.config(),aiAvailable:!!respond},queue:store.list(w,'queue',100).map(j=>({state:j.state,timestamp:j.timestamp})),checkedAt:Date.now(),
       workspace:ctx.role==='owner'?{name:'Mi espacio',mode:'Privado • un propietario'}:{name:'+'+ctx.account.number,mode:ctx.account.demo?'Cuenta de demostración':'Tu cuenta'},role:ctx.role,account:ctx.role==='client'?{number:ctx.account.number,linked:!!ctx.account.linked,demo:!!ctx.account.demo,createdAt:ctx.account.createdAt}:null,
@@ -221,6 +232,8 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    if(!origins.has(req.headers.origin)||req.headers['content-type']!=='application/json')return json(403,{error:'Solicitud no permitida.'});
    let body='';const limit=path==='/api/bot/config'?128000:path==='/api/brand'?1600000:4096;for await(const chunk of req){body+=chunk;if(Buffer.byteLength(body)>limit)return json(413,{error:'Solicitud demasiado grande.'});}
    let input;try{input=JSON.parse(body||'{}');if(!input||typeof input!=='object'||Array.isArray(input))throw new Error();}catch{return json(400,{error:'Solicitud inválida.'});}
+   // The account may have been deleted while the body was arriving.
+   if(ctx?.role==='client'&&(gone.has(ctx.w)||!store.get('system','accounts',ctx.account.id)))return json(401,{error:'Tu sesión terminó. Vuelve a entrar.'});
    if(path==='/api/login'){
     if(!ownerHost(host))return json(404,{error:'Ruta no encontrada.'});
     if(limited('owner-login|'+ip,10,60000))return json(429,{error:'Demasiados intentos. Espera un minuto.'});
@@ -234,11 +247,15 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     const number=normalizeNumber(input.number);if(!number)return json(400,{error:'Escribe tu número de WhatsApp con el código de país, por ejemplo 51 999 888 777.'});
     if(path==='/api/account/signup'){
      if(limited('signup|'+ip,5,3600000))return json(429,{error:'Demasiados registros desde esta conexión. Inténtalo en una hora.'});
+     if(signingUp.has(number))return json(409,{error:'Ese número ya se está registrando. Espera un momento.'});
      if(typeof input.password!=='string'||input.password.length<8||input.password.length>128)return json(400,{error:'La contraseña debe tener entre 8 y 128 caracteres.'});
      if(input.accept!==true)return json(400,{error:'Para continuar, acepta las condiciones y el aviso sobre la conexión no oficial.'});
      let account=accountByNumber(number);
-     // An unfinished sign-up (never linked) older than 30 minutes can be started again; anything else belongs to someone.
-     if(account&&(account.linked||Date.now()-account.createdAt<1800000))return json(409,{error:'Ese número ya tiene una cuenta. Entra o recupera tu contraseña.'});
+     // An unfinished sign-up (never linked) older than 10 minutes can be started again; anything else belongs to someone.
+     if(account&&(account.linked||Date.now()-account.createdAt<600000))return json(409,{error:'Ese número ya tiene una cuenta. Entra o recupera tu contraseña.'});
+     // Each sign-up makes WhatsApp show a linking request on that phone: at most 5 an hour per number.
+     if(limited('pair-number|'+number,5,3600000))return json(429,{error:'Demasiados intentos con este número. Inténtalo en una hora.'});
+     signingUp.add(number);try{
      if(account)await removeAccount(account);
      if(accounts().length>=maxAccounts)return json(503,{error:'Por ahora no hay plazas disponibles. Inténtalo más tarde.'});
      account={id:randomBytes(12).toString('hex'),w:'u_'+randomBytes(8).toString('hex'),number,passwordHash:await hashPassword(input.password),linked:false,createdAt:Date.now(),acceptedAt:Date.now(),terms:TERMS_VERSION};
@@ -247,6 +264,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
      // WhatsApp usually answers within a few seconds; the app also keeps polling /api/state for it.
      for(let i=0;i<40&&!t.connector.pairingCode&&t.connector.status!=='error'&&t.connector.status!=='disconnected';i++)await new Promise(r=>setTimeout(r,250));
      return json(200,{ok:true,pairingCode:t.connector.pairingCode||null});
+     }finally{signingUp.delete(number);}
     }
     if(path==='/api/account/login'){
      if(limited('login|'+ip,10,60000)||limited('login-number|'+number,10,900000))return json(429,{error:'Demasiados intentos. Espera unos minutos.'});
@@ -257,11 +275,13 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
      startClientSession(res,account);return json(200,{ok:true,linked:!!account.linked});
     }
     if(path==='/api/account/recover'){
-     if(limited('recover|'+number,5,3600000)||limited('recover-ip|'+ip,10,3600000))return json(429,{error:'Demasiados intentos. Inténtalo en una hora.'});
+     if(limited('recover-ip|'+ip,10,3600000)||limited('recover|'+number,5,3600000))return json(429,{error:'Demasiados intentos. Inténtalo en una hora.'});
      const account=accountByNumber(number),t=account&&!account.demo&&tenants.get(account.w);
      if(!t||t.connector.status!=='connected'||!t.connector.socket)return json(200,{method:'support'});
      const code=String(randomInt(0,1000000)).padStart(6,'0');recoveries.set(number,{hash:hash(code+number),expires:Date.now()+600000,attempts:0});
-     try{await t.connector.socket.sendMessage(number+'@s.whatsapp.net',{text:`Conversa: tu código para crear una contraseña nueva es ${code}. Caduca en 10 minutos. Si no lo pediste, ignora este mensaje.`});}catch{return json(200,{method:'support'});}
+     // Sent to the account's own chat with an id the history skips, so a session cookie alone never reveals the code.
+     const messageId=randomBytes(16).toString('hex').toUpperCase();t.connector.history?.skip?.(messageId);
+     try{await t.connector.socket.sendMessage(number+'@s.whatsapp.net',{text:`Conversa: tu código para crear una contraseña nueva es ${code}. Caduca en 10 minutos. Si no lo pediste, ignora este mensaje.`},{messageId});}catch{return json(200,{method:'support'});}
      return json(200,{method:'code'});
     }
     if(path==='/api/account/recover/verify'){
@@ -269,28 +289,32 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
      if(!r||!account||r.expires<Date.now()||r.attempts>=5){recoveries.delete(number);return json(400,{error:'El código caducó. Pide uno nuevo.'});}
      r.attempts++;if(typeof input.code!=='string'||!equal(hash(input.code.trim()+number),r.hash))return json(400,{error:'Código incorrecto.'});
      if(typeof input.password!=='string'||input.password.length<8||input.password.length>128)return json(400,{error:'La contraseña debe tener entre 8 y 128 caracteres.'});
-     recoveries.delete(number);account.passwordHash=await hashPassword(input.password);store.put('system','accounts',account.id,account);
+     recoveries.delete(number);const passwordHash=await hashPassword(input.password),fresh=accountByNumber(number);
+     if(!fresh||fresh.id!==account.id)return json(400,{error:'El código caducó. Pide uno nuevo.'});
+     store.put('system','accounts',fresh.id,{...fresh,passwordHash});
      // A new password closes every other session of that account.
-     dropSessions(account.id);startClientSession(res,account);return json(200,{ok:true});
+     dropSessions(fresh);startClientSession(res,fresh);return json(200,{ok:true});
     }
     return json(404,{error:'Ruta no encontrada.'});
    }
    if(!ctx)return json(401,{error:'Tu sesión terminó. Vuelve a entrar.'});
    // Logging out (or revoking every session) also stops that device's notifications and clears what the browser cached.
    if(path==='/api/logout'){store.remove(ctx.role==='owner'?'owner':'system','sessions',sidHash);for(const k of visible.keys())if(k.startsWith(w+'|'+sidHash))visible.delete(k);endStreams(s=>s.sid===sidHash);for(const sub of store.list(w,'push',-1))if(sub.session===sidHash)store.remove(w,'push',sub.id);res.setHeader('Set-Cookie',cookie('',0));res.setHeader('Clear-Site-Data','"cache"');}
-   else if(path==='/api/revoke-sessions'){if(ctx.role==='owner')store.clear('owner','sessions');else dropSessions(ctx.account.id);store.clear(w,'push');for(const k of visible.keys())if(k.startsWith(w+'|'))visible.delete(k);endStreams(s=>s.w===w);res.setHeader('Set-Cookie',cookie('',0));res.setHeader('Clear-Site-Data','"cache"');}
+   else if(path==='/api/revoke-sessions'){if(ctx.role==='owner')store.clear('owner','sessions');else dropSessions(ctx.account);store.clear(w,'push');for(const k of visible.keys())if(k.startsWith(w+'|'))visible.delete(k);endStreams(s=>s.w===w);res.setHeader('Set-Cookie',cookie('',0));res.setHeader('Clear-Site-Data','"cache"');}
    else if(path==='/api/account/delete'){
     if(ctx.role!=='client')return json(404,{error:'Ruta no encontrada.'});if(ctx.account.demo)return json(400,{error:'La cuenta de demostración no se puede eliminar.'});
     if(limited('delete|'+ctx.account.id,5,3600000))return json(429,{error:'Demasiados intentos. Inténtalo en una hora.'});
     if(!await checkPassword(input.password,ctx.account.passwordHash))return json(401,{error:'Contraseña incorrecta.'});
-    await removeAccount(ctx.account);res.setHeader('Set-Cookie',cookie('',0));res.setHeader('Clear-Site-Data','"cache", "storage"');return json(200,{ok:true,deleted:true});
+    if(store.get('system','accounts',ctx.account.id))await removeAccount(ctx.account);res.setHeader('Set-Cookie',cookie('',0));res.setHeader('Clear-Site-Data','"cache", "storage"');return json(200,{ok:true,deleted:true});
    }
    else if(path==='/api/account/password'){
     if(ctx.role!=='client')return json(404,{error:'Ruta no encontrada.'});if(ctx.account.demo)return json(400,{error:'La cuenta de demostración no cambia de contraseña.'});
+    if(limited('password-ip|'+ip,20,3600000)||limited('password|'+ctx.account.id,5,900000))return json(429,{error:'Demasiados intentos. Espera unos minutos.'});
     if(!await checkPassword(input.current,ctx.account.passwordHash))return json(401,{error:'La contraseña actual no es correcta.'});
     if(typeof input.password!=='string'||input.password.length<8||input.password.length>128)return json(400,{error:'La contraseña debe tener entre 8 y 128 caracteres.'});
-    ctx.account.passwordHash=await hashPassword(input.password);store.put('system','accounts',ctx.account.id,ctx.account);
-    dropSessions(ctx.account.id,sidHash);
+    const passwordHash=await hashPassword(input.password),fresh=store.get('system','accounts',ctx.account.id);
+    if(!fresh)return json(401,{error:'Tu sesión terminó. Vuelve a entrar.'});
+    store.put('system','accounts',fresh.id,{...fresh,passwordHash});dropSessions(fresh,sidHash);
    }
    else if(path==='/api/brand'){
     if(!brandAllowed(ctx))return json(404,{error:'Ruta no encontrada.'});
@@ -302,14 +326,15 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     if(!brand.icon192!==!brand.icon512)throw new Error('No se pudo usar esa imagen como logo.');
     store.put(w,'settings','brand',brand);return json(200,{brand:{name:brand.name,icon:!!brand.icon192,updatedAt:brand.updatedAt}});
    }
-   else if(path==='/api/presence'){const tab=typeof input.tab==='string'&&/^[a-z0-9-]{1,64}$/i.test(input.tab)?input.tab:'',key=w+'|'+sidHash+':'+tab;if(input.visible===true)visible.set(key,Date.now());else visible.delete(key);}
+   else if(path==='/api/presence'){const tab=typeof input.tab==='string'&&/^[a-z0-9-]{1,64}$/i.test(input.tab)?input.tab:'',prefix=w+'|'+sidHash+':',key=prefix+tab;
+    if(input.visible===true){if(!visible.has(key)){let mine=0;for(const k of visible.keys())if(k.startsWith(prefix))mine++;if(mine>=6||visible.size>=5000)return json(429,{error:'Demasiadas pestañas abiertas.'});}visible.set(key,Date.now());}else visible.delete(key);}
    else if(path==='/api/push/subscribe'){const sub=validSubscription(input.subscription),id=hash(sub.endpoint);store.put(w,'push',id,{...sub,id,session:sidHash,createdAt:Date.now()});store.trim(w,'push',10);}
    else if(path==='/api/push/unsubscribe'){if(typeof input.endpoint==='string')store.remove(w,'push',hash(input.endpoint));}
    else if(path==='/api/push/settings'){if(typeof input.preview!=='boolean')throw new Error('Ajuste inválido');store.put(w,'settings','push',{preview:input.preview});}
    else if(path==='/api/push/test'){const keys=vapidKeys(store),subs=store.list(w,'push',-1),brand=store.get(w,'settings','brand');let sent=0;for(const sub of subs){const r=await pushSender(sub,JSON.stringify({title:brand?.name||'Conversa',body:'Notificaciones activas.',tag:'conversa-test',...(brand?.icon192?{icon:'/brand/icon-192.png?v='+brand.updatedAt}:{})}),keys,{subject:pushSubject}).catch(()=>({}));if(r.ok)sent++;if(r.gone)store.remove(w,'push',sub.id);}return json(200,{sent,devices:subs.length});}
    else if(path==='/api/connect'){
     // Clients link (or re-link) with a code for their own number; the owner keeps the QR.
-    if(ctx.role==='client'&&!ctx.account.demo&&(!ctx.account.linked||!store.get(w,'auth','creds'))){if(limited('pair|'+ctx.account.id,6,3600000))throw new Error('Pediste muchos códigos. Espera un rato e inténtalo de nuevo.');await c.pair(ctx.account.number);}
+    if(ctx.role==='client'&&!ctx.account.demo&&(!ctx.account.linked||!store.get(w,'auth','creds'))){if(limited('pair|'+ctx.account.id,6,3600000)||limited('pair-number|'+ctx.account.number,5,3600000))throw new Error('Pediste muchos códigos. Espera un rato e inténtalo de nuevo.');await c.pair(ctx.account.number);}
     else await c.connect();
    }
    else if(path==='/api/pause')c.pause();
@@ -341,7 +366,15 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
   }catch(error){return json(400,{error:ERRORS_SHOWN.includes(path)?error.message:'No se pudo completar la acción.'});}
  });
  server.requestTimeout=15000;server.headersTimeout=10000;
- let closed=false,monitor,watch,avatarTimer,lastStatus;const signals=new Map();
+ let closed=false,monitor,watch,avatarTimer,sweeper,lastStatus;const signals=new Map();
+ // The phone's own chat hears about every new link, so a number registered by someone else is noticed at once.
+ function linkNotice(t,a){const messageId=randomBytes(16).toString('hex').toUpperCase();t.connector.history?.skip?.(messageId);
+  Promise.resolve(t.connector.socket?.sendMessage(a.number+'@s.whatsapp.net',{text:'Conversa quedó vinculada a este WhatsApp. Si no fuiste tú, ciérrala en WhatsApp → Dispositivos vinculados.'},{messageId})).catch(()=>{});}
+ // Every minute: expired limits and presence go away, and sign-ups never confirmed on the phone free their number and place after 30 minutes.
+ async function housekeeping(now=Date.now()){
+  for(const [k,v] of limits)if(now-v.start>v.window)limits.delete(k);for(const [k,seen] of visible)if(now-seen>75000)visible.delete(k);for(const [n,r] of recoveries)if(r.expires<now)recoveries.delete(n);
+  for(const a of accounts())if(!a.linked&&!a.demo&&now-a.createdAt>1800000&&!signingUp.has(a.number)&&tenants.get(a.w)?.connector.status!=='connected')await removeAccount(a);
+ }
  return {server,store,connector,bot,tenants,avatarTick,changed,start:async()=>{
    started=true;await connector.resume?.();bot.start();
    // Client workspaces that finished linking reconnect on their own after a restart, like the owner's.
@@ -350,9 +383,10 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    // Connection state lives in memory (status, QR, pairing code): watch it so the panel hears about it at once.
    // A client whose code was accepted (connected with its own number) becomes a linked account.
    watch=setInterval(()=>{for(const t of tenants.values()){const k=t.connector,signal=[k.status,k.qr,k.pairingCode,k.note,k.identity?.number].join('|');if(signal!==signals.get(t.w)){signals.set(t.w,signal);changed(t.w);}
-     if(t.accountId&&k.status==='connected'){const a=store.get('system','accounts',t.accountId);if(a&&!a.linked){a.linked=true;a.linkedAt=Date.now();store.put('system','accounts',a.id,a);changed(t.w);}}}},500);watch.unref?.();
-   avatarTimer=setInterval(()=>{avatarTick().catch(()=>{});},1500);avatarTimer.unref?.();},
-  close:()=>{if(closed)return;closed=true;clearInterval(monitor);clearInterval(watch);clearInterval(avatarTimer);clearTimeout(flush);for(const s of streams)s.res.end();for(const t of tenants.values()){t.bot.stop();t.connector.pause?.(false);t.connector.stop?.();}server.close();store.close();unlock();}};
+     if(t.accountId&&k.status==='connected'){const a=store.get('system','accounts',t.accountId);if(a&&!a.linked){a.linked=true;a.linkedAt=Date.now();store.put('system','accounts',a.id,a);changed(t.w);if(!a.demo)linkNotice(t,a);}}}},500);watch.unref?.();
+   avatarTimer=setInterval(()=>{avatarTick().catch(()=>{});},1500);avatarTimer.unref?.();
+   sweeper=setInterval(()=>{housekeeping().catch(()=>{});},60000);sweeper.unref?.();},
+  housekeeping,close:()=>{if(closed)return;closed=true;clearInterval(monitor);clearInterval(watch);clearInterval(avatarTimer);clearInterval(sweeper);clearTimeout(flush);for(const s of streams)s.res.end();for(const t of tenants.values()){t.bot.stop();t.connector.pause?.(false);t.connector.stop?.();}server.close();store.close();unlock();}};
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){
  const port=Number(process.env.PORT||4318),host=process.env.HOST||'127.0.0.1';

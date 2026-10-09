@@ -73,10 +73,18 @@ Solo se desvincula en estos casos:
 
 ## Instalar Conversa como app y recibir notificaciones
 
-- **Android (Chrome):** abre el panel, ve a **Conexión** → **Notificaciones y app** → **Instalar Conversa** (o en el menú ⋮ de Chrome, **Instalar app**). Después pulsa **Activar notificaciones** y acepta el permiso.
-- **iPhone (iOS 16.4 o posterior):** abre el panel en **Safari** → **Compartir** → **Añadir a pantalla de inicio**. Abre Conversa desde ese icono y pulsa **Activar notificaciones**. En iPhone las notificaciones solo funcionan así, desde el icono.
+- **Android (Chrome):** abre el panel, ve a **Ajustes** → **Notificaciones** → **Instalar app** (o en el menú ⋮ de Chrome, **Instalar app**). Después pulsa **Activar** y acepta el permiso.
+- **iPhone (iOS 16.4 o posterior):** abre el panel en **Safari** → **Compartir** → **Añadir a pantalla de inicio**. Abre la app desde ese icono y pulsa **Activar**. En iPhone las notificaciones solo funcionan así, desde el icono.
 - **PC:** Chrome o Edge muestran un botón de instalar en la barra de direcciones. Las notificaciones se activan igual.
-- Pulsa **Enviar una prueba** para comprobarlo. Si Conversa está en pantalla, no se envían notificaciones, porque ya ves el mensaje.
+- Pulsa **Probar** para comprobarlo. Si la app está en pantalla, no se envían notificaciones, porque ya ves el mensaje.
+
+## Cambiar el nombre y el logo (solo tú)
+
+1. En tu panel, ve a **Ajustes** → **Marca**.
+2. Toca uno de los logos listos (juegos, calculadora, calendario, notas, clima, reloj…) o toca el logo grande para subir una imagen tuya.
+3. Escribe el nombre y pulsa **Guardar**. **Restaurar** vuelve a Conversa.
+
+Cambian el menú, la pestaña del navegador, las notificaciones y la app instalada. Para que el icono del teléfono cambie, quita el icono de la pantalla de inicio y vuelve a añadirlo (en iPhone siempre; en Android, Chrome lo actualiza solo pasado un tiempo). Los clientes no ven esta opción.
 
 ## Publicar la app para clientes (multiusuario)
 
