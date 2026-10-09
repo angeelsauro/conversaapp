@@ -40,7 +40,7 @@ export function seedDemo({store,history:h,bot,now=Date.now()}){
   {id:'encargos',name:'Encargos',text:'Para encargos, dinos qué necesitas y para qué día. Te confirmamos personalmente.',keywords:['encargo','pedido','reservar']}
  ]});
  const add=(jid,name,items)=>{for(const [i,[ago,text,opts]] of items.entries())h.ingest(demoRaw(jid,'seed-'+jid.split('@')[0]+'-'+i,now-ago,text,name,opts),opts?.live?'live':'history');};
- const botReply=(jid,ago,text)=>{const ts=now-ago,id='BOT'+ts;store.put('owner','messages',`${jid}:${id}`,{id:`${jid}:${id}`,key:{remoteJid:jid,id,fromMe:true},jid,name:'Conversa',text,kind:'text',timestamp:ts,fromMe:true,bot:true});const chat=h.chat(jid);Object.assign(chat,{enabled:false,handoffAt:ts,handoffReason:'greeting',latest:ts});h.save(chat);};
+ const botReply=(jid,ago,text)=>{const ts=now-ago,id='BOT'+ts;store.put('owner','messages',`${jid}:${id}`,{id:`${jid}:${id}`,key:{remoteJid:jid,id,fromMe:true},jid,name:'Conversa',text,kind:'text',timestamp:ts,fromMe:true,bot:true});const chat=h.chat(jid);Object.assign(chat,{enabled:false,handoffAt:ts,handoffReason:'greeting',latest:ts,last:{text,kind:'text',fromMe:true,bot:true,timestamp:ts}});h.save(chat);};
  // Before the cutoff: always excluded.
  add('34600000101@s.whatsapp.net','Marcos Ruiz',[[6*demoDay,'¿Me guardas dos barras para el sábado?'],[6*demoDay-20*demoMinute,'Claro, quedan apartadas.',{fromMe:true}],[50*demoMinute,'¿Tenéis pan sin gluten esta semana?']]);
  add('34600000102@s.whatsapp.net','Elena Castro',[[9*demoDay,'',{message:{imageMessage:{caption:''}}}],[9*demoDay-5*demoMinute,'Así quedó la tarta, ¡gracias!'],[2*demoDay,'',{message:{audioMessage:{}}}]]);

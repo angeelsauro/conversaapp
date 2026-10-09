@@ -10,6 +10,8 @@ export function messageRecord(raw) {
   return {id:`${jid}:${raw.key.id}`,key:raw.key,jid,name:(raw.pushName||'Contacto').slice(0,100),text:text.slice(0,8000),kind,viewOnce,timestamp,fromMe:!!raw.key.fromMe};
 }
 
+export const preview = m => ({text:(m.text||'').slice(0,200),kind:m.kind,fromMe:!!m.fromMe,bot:!!m.bot,timestamp:m.timestamp});
+
 // Absence from a partial WhatsApp history is never evidence that a chat is new.
 export class History {
   constructor(store, workspace='owner') { this.store=store;this.w=workspace; }
@@ -49,10 +51,15 @@ export class History {
     if(msg.fromMe && !existing?.bot) { chat.enabled=false;chat.humanAt=Date.now(); }
     // Only the contact can opt out; the owner's own words (e.g. "cancelar") must not block the chat permanently.
     if(!msg.fromMe && /^(stop|basta|parar|no me escribas|cancelar|salir)$/i.test(msg.text.trim())) { chat.optOut=true;chat.enabled=false; }
-    this.save(chat);
     const seen=this.store.get(this.w,'seen',raw.key.id);
+    // The chat list shows each chat's last message and its unread count without loading every message.
+    if(!existing&&!seen&&msg.timestamp>=(chat.last?.timestamp||0))chat.last=preview(msg);
+    if(!existing&&!seen&&source==='live')chat.unread=msg.fromMe?0:(chat.unread||0)+1;
+    this.save(chat);
     if(!seen)this.store.put(this.w,'seen',raw.key.id,{first:msg.id});
     if(existing){if(!existing.key)this.store.put(this.w,'messages',msg.id,{...existing,key:msg.key,fromMe:msg.fromMe});return existing;}
+    // The same message can arrive again under the contact's other address (PN/LID): keep a single copy.
+    if(seen&&seen.first!==msg.id){const first=this.store.get(this.w,'messages',seen.first);if(first)return first;}
     msg.source=source;this.store.put(this.w,'messages',msg.id,msg);
     // History is view-only. Only events received after explicit activation can queue.
     const bot=this.store.get(this.w,'settings','bot');
@@ -62,6 +69,16 @@ export class History {
       this.store.put(this.w,'queue',msg.id,{id:msg.id,jid:msg.jid,timestamp:msg.timestamp,state:'pending',attempts:0,nextAt:Date.now()});
     }
     return msg;
+  }
+  // One-time fill of chat.last for chats stored before 0.3 (their messages are already there).
+  backfillLast() {
+    if(this.store.get(this.w,'settings','chat-last'))return;
+    const last=new Map();
+    for(const m of this.store.list(this.w,'messages',-1)){const jid=this.canonical(m.jid),prior=last.get(jid);if(!prior||m.timestamp>prior.timestamp)last.set(jid,m);}
+    this.store.transaction(()=>{
+      for(const [jid,m] of last){const chat=this.store.get(this.w,'chats',jid);if(chat&&!chat.deleted){chat.last=preview(m);this.save(chat);}}
+      this.store.put(this.w,'settings','chat-last',{done:true});
+    });
   }
   eligible(chat) { return chat.classification==='reviewed-new'&&chat.enabled&&!chat.optOut&&!chat.handoffAt; }
   review(jid,enabled) {

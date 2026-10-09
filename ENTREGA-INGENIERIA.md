@@ -63,10 +63,10 @@ En la entrega 0.2.0: npm test, 20 pruebas aprobadas, 0 fallidas, Node 24 en Wind
 - No hay motor general de secuencias de varios pasos. No se implementó la validación de datos solicitados ni el envío de una segunda respuesta condicionado a ellos.
 - reviewWaitMinutes se puede guardar (se solicitó 30), pero NO existe todavía el temporizador que lo ejecuta. No presentar este ajuste como función operativa.
 - No existe una carpeta separada «Listos para revisar»; hay revisión interna por handoffAt/handoffReason.
-- No hay envío manual desde el compositor del panel. No hay descarga/visualización de medios.
+- Desde 0.3.0 hay envío manual de texto desde el panel. No hay envío, descarga ni visualización de medios: se muestran como tarjetas («Foto», «Mensaje de voz»…) para abrirlos en WhatsApp.
 - El modo de IA tiene un punto de extensión heredado; no hay adaptador activo, ni se necesita OpenAI para el modo determinista solicitado.
 - No hay clientes múltiples, roles, registro, recuperación de cuentas, cuotas por cliente, facturación, aplicaciones nativas ni publicación en tiendas.
-- Historial paginado globalmente, no consulta optimizada por conversación. Evaluar índices, escalabilidad y UX con volúmenes grandes.
+- Desde 0.3.0 el historial se pide por conversación (/api/chat/messages), pero el servidor descifra todos los mensajes en cada consulta. Evaluar índices, escalabilidad y UX con volúmenes grandes.
 - Una revisión externa de seguridad y privacidad sigue pendiente; las pruebas existentes no son una certificación.
 
 ## Revisar antes de desplegar
@@ -116,3 +116,26 @@ Leer también ALCANCE-PRODUCTO.md (producto determinista sin IA generativa, requ
   - Se activó la prueba PRUEBA para el chat de un contacto. Al recibir `PRUEBA`, Conversa respondió una sola vez el texto neutro en menos de 2 segundos, el chat pasó a revisión y la prueba quedó consumida.
   - Después se pausó la recepción, se desvinculó la sesión y se borraron los datos (detalle en SEGURIDAD-PUBLICACION.md).
   - Repetirla en el servidor definitivo antes de operar.
+
+## Versión 0.3.0 (9 de octubre de 2026): pulido del chat
+
+Fase 1 de la auditoría de interfaz: el panel funciona como un chat de mensajería y no solo como un visor.
+
+### Cambios
+
+- Responder desde el panel: campo de texto con envío (Enter envía y Mayús+Enter añade una línea; en el móvil, el botón), respuestas guardadas insertables con el botón de rayo, y estado de cada mensaje propio (enviando, enviado o sin confirmar). Si respondes tú, el bot se pausa en ese chat. Sustituye al pie «Continúa desde WhatsApp».
+- No leídos: contador por chat, insignia en «Mensajes» (roja en el móvil), número en la pestaña del navegador y separador «N mensajes no leídos» al abrir el chat. Abrir un chat lo marca como leído solo en Conversa; WhatsApp no recibe confirmación de lectura.
+- Lista de chats: último mensaje con «Tú:» o «Bot:», icono del tipo de contenido y orden por la última actividad. Los chats anteriores a 0.3.0 reciben su último mensaje una vez, al arrancar.
+- Conversación: cada chat se carga aparte, con 150 mensajes y el botón «Cargar mensajes anteriores». Burbujas agrupadas con cola, respuestas del bot en violeta con la etiqueta «Respuesta automática», separadores «Hoy» y «Ayer» fijos al desplazarse, y tarjetas para foto, voz, video, documento y visualización única.
+- Diseño: iconos SVG propios en lugar de caracteres (se ven igual en Android, iOS y Windows), avatares redondos con degradado, fondo con textura, menú «Mensajes, Mi bot, Conexión» y barra inferior con insignia en el móvil. Texto mínimo de 11 a 12 px (antes 10 px) y gris secundario más oscuro, para un contraste mayor. Animación solo en el mensaje que acaba de llegar, desactivada con «reducir movimiento».
+- Corrección: el mismo mensaje recibido con las dos direcciones del contacto (PN y LID) se guardaba dos veces. Ahora se guarda una sola copia.
+- API: GET /api/chat/messages, POST /api/chat/send y POST /api/chat/read (ver API-REVISION.md).
+
+### Verificación de esta versión
+
+- `npm test`: 28 pruebas aprobadas, 0 fallidas (4 nuevas en test/chat-panel.test.mjs: último mensaje, no leídos, deduplicación PN/LID, relleno inicial, envío manual con respuesta confirmada, sin confirmar y sin conexión, y rutas HTTP).
+- Navegador real (Chromium/Playwright) contra `npm run preview` y contra `dist/conversa-demo.html`, 37 y 38 comprobaciones aprobadas. Incluyen:
+  - insignia y título con no leídos, «Bot:» y «Tú:» en la lista, separador de no leídos y marcado como leído;
+  - tarjetas de foto y voz, envío con Enter y marca de enviado, Mayús+Enter, y menú de respuestas guardadas que inserta el texto sin enviarlo;
+  - campo de escritura visible y con letra de 16 px en móviles de 375, 390 y 430 píxeles, sin desplazamiento horizontal y sin errores de JavaScript.
+- Pendiente: probarlo en el servidor real con WhatsApp vinculado. Un mensaje enviado desde el panel debe llegar una sola vez al contacto y verse con su marca en el panel.

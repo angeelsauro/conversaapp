@@ -21,7 +21,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  const tokenPath=process.env.CONVERSA_OWNER_TOKEN_FILE||join(dir,'owner-token');
  if(!existsSync(tokenPath))writeFileSync(tokenPath,randomBytes(32).toString('hex'),{flag:'wx',mode:0o600});
  const token=readFileSync(tokenPath,'utf8').trim();if(!/^[a-f0-9]{64}$/.test(token))throw new Error('Owner access must be a 256-bit hexadecimal secret');
- const connector=connectorFactory?connectorFactory(store):new Connector(store);const bot=new Bot(store,connector,{respond});
+ const connector=connectorFactory?connectorFactory(store):new Connector(store);connector.history?.backfillLast?.();const bot=new Bot(store,connector,{respond});
  const attempts=new Map();
  const equal=(a,b)=>typeof a==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
  const origins=new Set(publicOrigin?[publicOrigin]:[`http://127.0.0.1:${port}`,`http://localhost:${port}`]);
@@ -43,8 +43,15 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    const authenticated=session?.expiry>Date.now()&&session.tokenVersion===hash(token);
    if(req.method==='GET'){
     if(!authenticated)return json(401,{error:'Entra con tu acceso privado.'});
-    if(path==='/api/state')return json(200,{connection:connector.snapshot(),messages:store.list('owner','messages',100).map(m=>({...m,conversationJid:connector.history.canonical(m.jid)})),totalMessages:store.count('owner','messages'),chats:store.list('owner','chats',200),bot:{...bot.config(),aiAvailable:!!respond},queue:store.list('owner','queue',100).map(j=>({state:j.state,timestamp:j.timestamp})),checkedAt:Date.now(),workspace:{name:'Mi espacio',mode:'Privado • un propietario'},tests:testEndpoints,keywordTest:(t=>t&&{jid:t.jid,expiresAt:t.expiresAt,consumedAt:t.consumedAt||null})(store.get('owner','settings','keyword-test'))});
+    if(path==='/api/state')return json(200,{connection:connector.snapshot(),messages:store.list('owner','messages',100).map(m=>({...m,conversationJid:connector.history.canonical(m.jid)})),totalMessages:store.count('owner','messages'),chats:store.list('owner','chats',2000),totalChats:store.count('owner','chats'),bot:{...bot.config(),aiAvailable:!!respond},queue:store.list('owner','queue',100).map(j=>({state:j.state,timestamp:j.timestamp})),checkedAt:Date.now(),workspace:{name:'Mi espacio',mode:'Privado • un propietario'},tests:testEndpoints,keywordTest:(t=>t&&{jid:t.jid,expiresAt:t.expiresAt,consumedAt:t.consumedAt||null})(store.get('owner','settings','keyword-test'))});
     if(path==='/api/messages'){const offset=Math.max(0,Math.min(10000000,Number(url.searchParams.get('offset'))||0));return json(200,{messages:store.list('owner','messages',100,offset).map(m=>({...m,conversationJid:connector.history.canonical(m.jid)})),total:store.count('owner','messages')});}
+    if(path==='/api/chat/messages'){
+     // One chat's history, newest page first; `before` pages back in time.
+     const jid=url.searchParams.get('jid');if(!direct(jid))return json(400,{error:'Chat inválido.'});
+     const target=connector.history.canonical(jid),before=Number(url.searchParams.get('before'))||Infinity;
+     const all=store.list('owner','messages',-1).filter(m=>m.timestamp<before&&connector.history.canonical(m.jid)===target).sort((a,b)=>a.timestamp-b.timestamp);
+     return json(200,{messages:all.slice(-150).map(m=>({...m,conversationJid:target})),more:all.length>150});
+    }
     if(path==='/api/export'){res.setHeader('Content-Disposition','attachment; filename="conversa-mensajes.json"');return json(200,{exportedAt:new Date().toISOString(),messages:store.list('owner','messages',-1),chats:store.list('owner','chats',-1)});}
     return json(404,{error:'Ruta no encontrada.'});
    }
@@ -71,6 +78,8 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    else if(path==='/api/bot/config')return json(200,{bot:bot.configure(input)});
    else if(path==='/api/chat/send-standard-once'&&testEndpoints)return json(200,await bot.sendStandardOnce(input));
    else if(path==='/api/bot/preview')return json(200,{text:await bot.preview(input.text)});
+   else if(path==='/api/chat/send'){if(!direct(input.jid))throw new Error('Chat inválido');if(typeof input.text!=='string'||!input.text.trim()||input.text.length>4000)throw new Error('Escribe un mensaje de hasta 4000 caracteres.');return json(200,await bot.sendManual(input.jid,input.text));}
+   else if(path==='/api/chat/read'){if(!direct(input.jid))throw new Error('Chat inválido');const chat=connector.history.chat(input.jid);if(chat.unread){chat.unread=0;connector.history.save(chat);}}
    else if(path==='/api/chat/review'){if(typeof input.enabled!=='boolean')throw new Error('Selección inválida');connector.history.review(input.jid,input.enabled);}
    else if(path==='/api/history/more'){
     if(!direct(input.jid))throw new Error('Chat inválido');
@@ -86,7 +95,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     for(const j of store.list('owner','queue',-1))if(connector.history.canonical(j.jid)===chat.jid)store.remove('owner','queue',j.id);
    }else return json(404,{error:'Ruta no encontrada.'});
    return json(200,{ok:true});
-  }catch(error){return json(400,{error:['/api/disconnect','/api/bot/config','/api/chat/review','/api/bot/preview'].includes(path)?error.message:'No se pudo completar la acción.'});}
+  }catch(error){return json(400,{error:['/api/disconnect','/api/bot/config','/api/chat/review','/api/bot/preview','/api/chat/send'].includes(path)?error.message:'No se pudo completar la acción.'});}
  });
  server.requestTimeout=15000;server.headersTimeout=10000;
  let closed=false,monitor,lastStatus;

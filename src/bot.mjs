@@ -1,4 +1,5 @@
 import {randomBytes} from 'node:crypto';
+import {preview} from './history.mjs';
 export class Bot {
  constructor(store,connector,{respond}={}) {this.store=store;this.c=connector;this.w=connector.workspace||'owner';this.respond=respond;this.running=false;
   for(const job of store.list(this.w,'queue',-1))if(['generating','sending'].includes(job.state)){job.state=job.state==='sending'?'uncertain':'pending';store.put(this.w,'queue',job.id,job);}
@@ -27,10 +28,22 @@ export class Bot {
   const text=this.config().fallback;if(!text)throw new Error('Configura la respuesta estándar.');
   const id=randomBytes(16).toString('hex').toUpperCase(),timestamp=Date.now();
   const job={id:key,jid:chat.jid,state:'sending',timestamp,outgoingId:id,manual:true};
-  this.store.transaction(()=>{this.store.put(this.w,'queue',key,job);chat.enabled=false;chat.handoffAt=timestamp;chat.handoffReason='greeting';this.c.history.save(chat);this.store.put(this.w,'messages',chat.jid+':'+id,{id:chat.jid+':'+id,key:{remoteJid:chat.jid,id,fromMe:true},jid:chat.jid,name:'Conversa',text,kind:'text',timestamp,fromMe:true,bot:true});});
+  this.store.transaction(()=>{this.store.put(this.w,'queue',key,job);const record={id:chat.jid+':'+id,key:{remoteJid:chat.jid,id,fromMe:true},jid:chat.jid,name:'Conversa',text,kind:'text',timestamp,fromMe:true,bot:true,status:'sending'};chat.enabled=false;chat.handoffAt=timestamp;chat.handoffReason='greeting';chat.last=preview(record);chat.latest=Math.max(chat.latest||0,timestamp);this.c.history.save(chat);this.store.put(this.w,'messages',record.id,record);});
   let timer;try{const sent=await Promise.race([this.c.socket.sendMessage(chat.jid,{text},{messageId:id}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),10000);})]);job.state=sent?'sent':'uncertain';}catch{job.state='uncertain';}finally{clearTimeout(timer);}
-  this.store.put(this.w,'queue',key,job);return {state:job.state};
+  this.store.put(this.w,'queue',key,job);this.markSent(`${chat.jid}:${id}`,job.state);return {state:job.state};
  }
+ // Owner reply typed in the panel: sent as-is, and like a reply from the phone it pauses the bot in that chat.
+ async sendManual(jid,text){
+  const chat=this.c.history.chat(jid);
+  if(chat.deleted)throw new Error('Este chat fue borrado.');
+  if(this.c.status!=='connected'||!this.c.socket)throw new Error('Conecta WhatsApp primero.');
+  const id=randomBytes(16).toString('hex').toUpperCase(),timestamp=Date.now();
+  const record={id:`${chat.jid}:${id}`,key:{remoteJid:chat.jid,id,fromMe:true},jid:chat.jid,name:'Tú',text,kind:'text',timestamp,fromMe:true,manual:true,source:'live',status:'sending'};
+  this.store.transaction(()=>{this.store.put(this.w,'messages',record.id,record);this.store.put(this.w,'seen',id,{first:record.id});Object.assign(chat,{enabled:false,humanAt:timestamp,unread:0,last:preview(record),latest:Math.max(chat.latest||0,timestamp)});this.c.history.save(chat);});
+  let timer,state;try{const sent=await Promise.race([this.c.socket.sendMessage(chat.jid,{text},{messageId:id}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),10000);})]);state=sent?'sent':'uncertain';}catch{state='uncertain';}finally{clearTimeout(timer);}
+  this.markSent(record.id,state);return {id:record.id,status:state};
+ }
+ markSent(messageId,state){const m=this.store.get(this.w,'messages',messageId);if(m){m.status=state==='sent'?'sent':'uncertain';this.store.put(this.w,'messages',messageId,m);}}
  armKeywordTest(jid){if(typeof jid!=='string'||!/^\d+@s\.whatsapp\.net$/.test(jid))throw new Error('Contacto inválido');const chat=this.c.history.chat(jid);if(!chat.earliest||chat.deleted||chat.optOut||chat.handoffReason==='view-once')throw new Error('Contacto no disponible para prueba');const now=Date.now(),test={id:randomBytes(16).toString('hex'),jid:chat.jid,armedAt:now,expiresAt:now+600000,text:'Mensaje de prueba recibido correctamente.'};this.store.put(this.w,'settings','keyword-test',test);return {expiresAt:test.expiresAt,keyword:'PRUEBA'};}
  start(){this.prune();this.timer=setInterval(()=>this.tick().catch(()=>{this.lastError='QUEUE_FAILURE';}),1000);this.timer.unref?.();this.pruneTimer=setInterval(()=>{try{this.prune();}catch{}},3600000);this.pruneTimer.unref?.();}
  stop(){clearInterval(this.timer);clearInterval(this.pruneTimer);this.stopped=true;}
@@ -53,9 +66,9 @@ export class Bot {
    text=text.slice(0,4000);const id=randomBytes(16).toString('hex').toUpperCase();
    job.state='sending';job.outgoingId=id;job.sentAt=Date.now();
    // Persist intent before the network call. An uncertain send is never retried automatically.
-   this.store.transaction(()=>{save();budget.count++;this.store.put(this.w,'settings','budget',budget);if(job.testId){const t=this.store.get(this.w,'settings','keyword-test');t.consumedAt=Date.now();this.store.put(this.w,'settings','keyword-test',t);}if(job.testId||this.config().handoffAfterReply){const chat=this.c.history.chat(job.jid);chat.enabled=false;chat.handoffAt=Date.now();chat.handoffReason='greeting';this.c.history.save(chat);}this.store.put(this.w,'messages',`${job.jid}:${id}`,{id:`${job.jid}:${id}`,key:{remoteJid:job.jid,id,fromMe:true},jid:job.jid,name:'Conversa',text,kind:'text',timestamp:Date.now(),fromMe:true,bot:true});});
+   this.store.transaction(()=>{save();budget.count++;this.store.put(this.w,'settings','budget',budget);if(job.testId){const t=this.store.get(this.w,'settings','keyword-test');t.consumedAt=Date.now();this.store.put(this.w,'settings','keyword-test',t);}const record={id:`${job.jid}:${id}`,key:{remoteJid:job.jid,id,fromMe:true},jid:job.jid,name:'Conversa',text,kind:'text',timestamp:Date.now(),fromMe:true,bot:true,status:'sending'},chat=this.c.history.chat(job.jid);if(job.testId||this.config().handoffAfterReply){chat.enabled=false;chat.handoffAt=Date.now();chat.handoffReason='greeting';}chat.last=preview(record);chat.latest=Math.max(chat.latest||0,record.timestamp);this.c.history.save(chat);this.store.put(this.w,'messages',record.id,record);});
    let timeout;try{const result=await Promise.race([this.c.socket.sendMessage(job.jid,{text},{messageId:id}),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(new Error('SEND_TIMEOUT')),30000);})]);job.state=result?'sent':'uncertain';}catch{job.state='uncertain';}finally{clearTimeout(timeout);}
-   if(!this.stopped)save();
+   if(!this.stopped){save();this.markSent(`${job.jid}:${id}`,job.state);}
   }finally{this.running=false;}
  }
 }
