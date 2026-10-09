@@ -86,6 +86,20 @@ Solo se desvincula en estos casos:
 
 Cambian el menú, la pestaña del navegador, las notificaciones y la app instalada. Para que el icono del teléfono cambie, quita el icono de la pantalla de inicio y vuelve a añadirlo (en iPhone siempre; en Android, Chrome lo actualiza solo pasado un tiempo). Los clientes no ven esta opción.
 
+## App de administrador para tu Android (APK)
+
+**Conversa Admin** abre tu panel privado como una app. Entras igual que en el navegador: con tu correo (Cloudflare Access) y tu código privado. Se instala con el archivo `.apk`, no desde Google Play.
+
+1. Descarga el `.apk` en tu Android y ábrelo. Permite «Instalar apps desconocidas» para esa app (Chrome o Archivos). Si Play Protect avisa, toca **Instalar de todas formas**.
+2. Abre **Conversa Admin**, entra con tu correo y tu código privado.
+3. **Opcional, para quitar la barra de dirección de arriba:**
+   - En el servidor, pega la línea de instalación añadiendo al final, después de `bash`:
+     `-s -- --set CONVERSA_ANDROID_PACKAGE=com.andinamusic.conversa.admin --set CONVERSA_ANDROID_SHA256=<huella del APK>`
+   - En Cloudflare Zero Trust: **Access → Applications → Add an application → Self-hosted**. Dominio: tu panel (`panel-…`); **Path**: `.well-known/assetlinks.json`. Política: **Action: Bypass**, **Include: Everyone**. Esto deja ver solo ese archivo público; el resto del panel sigue protegido.
+   - Desinstala y vuelve a instalar la app, o espera unos minutos.
+
+El icono y el nombre del APK son fijos. Para cambiarlos desde **Marca**, instala el panel desde Chrome (**⋮ → Instalar app**), o pide un APK nuevo con el logo elegido.
+
 ## Publicar la app para clientes (multiusuario)
 
 Tu panel privado sigue en su subdominio con Cloudflare Access. La app para clientes va en **otra dirección pública, sin Access**: cada cliente entra con su número y su contraseña.

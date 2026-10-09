@@ -141,3 +141,10 @@ test('linking with a code identifies as a real browser (WhatsApp rejects custom 
  assert.deepEqual(browserFor('owner'),['Conversa','Desktop','2.0.0']);
  const client=browserFor('u_0123456789abcdef');assert.equal(client[0],'Ubuntu');assert.equal(client[1],'Chrome');
 });
+
+test('asset links can declare the admin app and the client app at once',async t=>{
+ const fp='49:F0:C9:8C:0E:27:92:FD:52:CC:4E:4B:A6:78:4B:7D:38:8F:29:06:DB:16:A5:27:02:10:A7:42:39:C9:AD:85';
+ const {panel}=await boot(t,{android:{package:'com.andinamusic.conversa.admin, com.andinamusic.conversa, not a package',sha256:fp}});
+ const links=await panel('GET','/.well-known/assetlinks.json');assert.equal(links.status,200);
+ assert.deepEqual(links.json.map(s=>[s.target.package_name,s.target.sha256_cert_fingerprints]),[['com.andinamusic.conversa.admin',[fp]],['com.andinamusic.conversa',[fp]]]);
+});

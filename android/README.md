@@ -138,3 +138,18 @@ Instala la app (desde la prueba interna de Play o con el `.apk`) y ábrela:
 3. Ejecuta `bubblewrap build` con **la misma llave** y sube el nuevo `.aab`.
 
 No subas `C:\conversa-android` ni la llave a git: el proyecto se puede regenerar siempre con `twa-manifest.json`.
+
+## App de administrador (solo para ti, fuera de Google Play)
+
+`android/admin/twa-manifest.json` genera **Conversa Admin** (`com.andinamusic.conversa.admin`), que abre tu panel privado `https://panel-q7x4.mutuomatch.com` (con Cloudflare Access y tu código privado). Se instala a mano con el `.apk`; no se publica en Play.
+
+Compilación probada el 9 de octubre de 2026 con Bubblewrap 1.27.0, JDK 17 y las herramientas oficiales del Android SDK:
+
+1. Copia el `twa-manifest.json` (admin o clientes) a una carpeta vacía y pon la ruta real de la llave en `signingKey.path`.
+2. `bubblewrap update --skipVersionUpgrade`
+3. `bash ruta/a/android/patch-template.sh` (adapta la plantilla de Bubblewrap a las herramientas actuales; ver los comentarios del script).
+4. `bubblewrap build --skipPwaValidation`
+
+Si tu SDK tiene las herramientas de línea de comandos en la raíz (con un `source.properties` ahí), Gradle no ve las plataformas instaladas: usa la estructura estándar `cmdline-tools/latest/`.
+
+Para que una app abra sin barra de dirección, el servidor debe declararla: `CONVERSA_ANDROID_PACKAGE` admite varios paquetes separados por comas (por ejemplo `com.andinamusic.conversa.admin,com.andinamusic.conversa`) y `CONVERSA_ANDROID_SHA256` varias huellas. En el panel, además, Cloudflare Access debe dejar pasar `/.well-known/assetlinks.json` (ver SERVIDOR.md).

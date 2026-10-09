@@ -1,8 +1,8 @@
 {
-  "packageId": "com.andinamusic.conversa",
-  "host": "app.mutuomatch.com",
-  "name": "Conversa",
-  "launcherName": "Conversa",
+  "packageId": "com.andinamusic.conversa.admin",
+  "host": "panel-q7x4.mutuomatch.com",
+  "name": "Conversa Admin",
+  "launcherName": "Conversa Admin",
   "display": "standalone",
   "orientation": "portrait",
   "themeColor": "#123F3C",
@@ -14,16 +14,17 @@
   "backgroundColor": "#0C2E2B",
   "enableNotifications": true,
   "startUrl": "/",
-  "fullScopeUrl": "https://app.mutuomatch.com/",
+  "fullScopeUrl": "https://panel-q7x4.mutuomatch.com/",
   "iconUrl": "https://app.mutuomatch.com/icon-512.png",
   "maskableIconUrl": "https://app.mutuomatch.com/icon-maskable-512.png",
+  "monochromeIconUrl": "https://app.mutuomatch.com/icon-mono-512.png",
   "webManifestUrl": "https://app.mutuomatch.com/manifest.webmanifest",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
-    "path": "[RUTA-AL-KEYSTORE]/conversa-upload.keystore",
-    "alias": "conversa-upload"
+    "path": "[RUTA-AL-KEYSTORE]/conversa-test.keystore",
+    "alias": "conversa-test"
   },
-  "appVersionName": "1.0.0",
+  "appVersionName": "0.5.1-admin",
   "appVersionCode": 1,
   "minSdkVersion": 24,
   "fallbackType": "customtabs",
@@ -38,6 +39,5 @@
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
   "fingerprints": [],
-  "generatorApp": "bubblewrap-cli",
-  "monochromeIconUrl": "https://app.mutuomatch.com/icon-mono-512.png"
+  "generatorApp": "bubblewrap-cli"
 }
