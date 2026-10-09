@@ -19,12 +19,15 @@ const PUBLIC={'/':'index.html','/app.js':'app.js','/theme.js':'theme.js','/sw.js
 const TYPES={html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',svg:'image/svg+xml; charset=utf-8',webmanifest:'application/manifest+json; charset=utf-8',png:'image/png',json:'application/json; charset=utf-8'};
 // Files the browser may show or play in place; anything else (documents, unknown types) is only downloaded.
 const INLINE=/^(image\/(jpeg|png|webp|gif)|audio\/(ogg|mpeg|mp4|aac|webm|amr|wav)|video\/(mp4|webm|3gpp))$/,MEDIA_MAX=25*1048576,LABELS={image:'📷 Foto',audio:'🎤 Mensaje de voz',video:'🎥 Video',document:'📄 Documento',sticker:'Sticker',view_once:'Visualización única',location:'📍 Ubicación',contact:'👤 Contacto',poll:'📊 Encuesta',event:'📅 Evento',invite:'👥 Invitación a un grupo',call:'📞 Llamada'},REACTIONS=new Set(['👍','❤️','😂','😮','😢','🙏','']);
-const ERRORS_SHOWN=['/api/disconnect','/api/bot/config','/api/chat/review','/api/bot/preview','/api/chat/send','/api/chat/react','/api/push/subscribe','/api/history/more','/api/connect'];
+const ERRORS_SHOWN=['/api/brand','/api/disconnect','/api/bot/config','/api/chat/review','/api/bot/preview','/api/chat/send','/api/chat/react','/api/push/subscribe','/api/history/more','/api/connect'];
 // Client accounts: international number (country code, digits only) and a password hashed with scrypt.
 export const normalizeNumber=v=>{if(typeof v!=='string'&&typeof v!=='number')return null;const d=String(v).replace(/[^\d]/g,'').replace(/^00/,'');return /^[1-9]\d{7,14}$/.test(d)?d:null;};
 async function hashPassword(password){const salt=randomBytes(16),key=await scryptAsync(password,salt,32,{N:16384,r:8,p:1,maxmem:64*1048576});return `scrypt$${salt.toString('base64')}$${key.toString('base64')}`;}
 async function checkPassword(password,stored){if(typeof password!=='string'||typeof stored!=='string')return false;const [,salt,key]=stored.split('$');const got=await scryptAsync(password,Buffer.from(salt,'base64'),32,{N:16384,r:8,p:1,maxmem:64*1048576}),want=Buffer.from(key,'base64');return got.length===want.length&&timingSafeEqual(got,want);}
 const TERMS_VERSION='2026-10-09';
+// Custom brand (name + logo): for now only the owner (super admin); later a paid option for client accounts.
+const brandAllowed=ctx=>ctx?.role==='owner';
+const pngSize=b=>b.length>24&&b.readUInt32BE(0)===0x89504e47&&b.readUInt32BE(4)===0x0d0a1a0a&&b.toString('latin1',12,16)==='IHDR'?[b.readUInt32BE(16),b.readUInt32BE(20)]:null;
 export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data'),port=4318,connectorFactory,respond,publicOrigin=process.env.PUBLIC_ORIGIN||undefined,appOrigin=process.env.APP_ORIGIN||undefined,testEndpoints=testEndpointsEnabled(),pushSender=sendPush,avatarFetch=globalThis.fetch,maxAccounts=Number(process.env.CONVERSA_MAX_ACCOUNTS||30),trustProxyIp=process.env.CONVERSA_TRUST_CF==='1',android={package:process.env.CONVERSA_ANDROID_PACKAGE,sha256:process.env.CONVERSA_ANDROID_SHA256},demoAccount=process.env.CONVERSA_DEMO_ACCOUNT||undefined,demoFactory}={}) {
  const production=process.env.NODE_ENV==='production';
  if(production&&(!publicOrigin?.startsWith('https://')||!process.env.CONVERSA_KEY_FILE||!process.env.CONVERSA_OWNER_TOKEN_FILE))throw new Error('Production requires HTTPS origin and external secret files');
@@ -58,7 +61,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  // Topic and tag travel to Google/Apple: keyed HMAC of the chat, never something a phone number can be guessed from.
  const lastPush=new Map(),pushSubject=[publicOrigin,appOrigin].find(o=>o?.startsWith('https://')),topicOf=(w,jid)=>store.index(w,'push-topic',jid).slice(0,32);
  async function notify(w,msg,chat){const subs=store.list(w,'push',-1);if(!subs.length||ownerWatching(w))return;const now=Date.now(),key=w+'|'+chat.jid;if(now-(lastPush.get(key)||0)<3000)return;lastPush.set(key,now);
-  const hidden=store.get(w,'settings','push')?.preview===false,payload=JSON.stringify({title:hidden?'Conversa':chat.name,body:hidden?'Tienes un mensaje nuevo':msg.text?msg.text.slice(0,140).toWellFormed():[LABELS[msg.kind]||'Mensaje nuevo',msg.detail?.name].filter(Boolean).join(': '),tag:topicOf(w,chat.jid).slice(0,16),jid:chat.jid});
+  const hidden=store.get(w,'settings','push')?.preview===false,brand=store.get(w,'settings','brand'),appName=brand?.name||'Conversa',payload=JSON.stringify({title:hidden?appName:chat.name,body:hidden?'Tienes un mensaje nuevo':msg.text?msg.text.slice(0,140).toWellFormed():[LABELS[msg.kind]||'Mensaje nuevo',msg.detail?.name].filter(Boolean).join(': '),tag:topicOf(w,chat.jid).slice(0,16),jid:chat.jid,...(brand?.icon192?{icon:'/brand/icon-192.png?v='+brand.updatedAt}:{})});
   const keys=vapidKeys(store);for(const sub of subs){const r=await pushSender(sub,payload,keys,{topic:topicOf(w,chat.jid),subject:pushSubject}).catch(()=>({}));if(r.gone)store.remove(w,'push',sub.id);}}
  // Opened files live in memory only (LRU, 80 MB shared by every workspace); the same file requested twice downloads once.
  const mediaCache=new Map(),downloads=new Map(),waiting=[];let cached=0,active=0;
@@ -122,6 +125,14 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
   const url=new URL(req.url,'http://localhost'),path=url.pathname,ip=trustProxyIp&&typeof req.headers['cf-connecting-ip']==='string'?req.headers['cf-connecting-ip'].slice(0,64):req.socket.remoteAddress;
   try {
    if(req.method==='GET'&&path==='/healthz')return json(200,{ok:true});
+   if(req.method==='GET'&&(['/manifest.webmanifest','/brand/icon-192.png','/brand/icon-512.png'].includes(path)||/^\/brand\/preset\/[a-z]{1,20}\.svg$/.test(path))){
+    // The installed app takes the owner's brand when one is set; everyone else gets Conversa.
+    const sid0=req.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith(cookieName+'='))?.slice(cookieName.length+1),key0=sid0&&/^[a-f0-9]{64}$/.test(sid0)?hash(sid0):null,s0=key0&&ownerHost(host)&&store.get('owner','sessions',key0),brand=s0?.expiry>Date.now()&&s0.tokenVersion===hash(token)?store.get('owner','settings','brand'):null,owner=!!(s0?.expiry>Date.now()&&s0.tokenVersion===hash(token));
+    // Ready-made generic logos (games, calculator, calendar…) to disguise the app: only the super admin sees them.
+    if(path.startsWith('/brand/preset/')){const file=join(root,'public','brand-presets',path.slice(14));if(!owner||!existsSync(file))return json(404,{error:'Ruta no encontrada.'});res.writeHead(200,{'Content-Type':'image/svg+xml','Cache-Control':'private, max-age=86400'});return res.end(readFileSync(file));}
+    if(path==='/manifest.webmanifest'){const m=JSON.parse(readFileSync(join(root,'public','manifest.webmanifest'),'utf8'));if(brand){m.name=m.short_name=m.description=brand.name;if(brand.icon512)m.icons=[{src:'/brand/icon-192.png?v='+brand.updatedAt,sizes:'192x192',type:'image/png'},{src:'/brand/icon-512.png?v='+brand.updatedAt,sizes:'512x512',type:'image/png'},{src:'/brand/icon-512.png?v='+brand.updatedAt,sizes:'512x512',type:'image/png',purpose:'maskable'}];}res.writeHead(200,{'Content-Type':TYPES.webmanifest});return res.end(JSON.stringify(m));}
+    const size=path.includes('512')?'512':'192',data=brand?.['icon'+size]?Buffer.from(brand['icon'+size],'base64'):readFileSync(join(root,'public',`icon-${size}.png`));res.writeHead(200,{'Content-Type':'image/png','Content-Length':data.length});return res.end(data);
+   }
    if(req.method==='GET'&&Object.hasOwn(PUBLIC,path)){const name=PUBLIC[path];res.writeHead(200,{'Content-Type':TYPES[name.split('.').pop()]});res.end(readFileSync(join(root,'public',name)));return;}
    // Public legal pages (privacy, terms, account deletion) required by app stores.
    if(req.method==='GET'&&/^\/legal\/[a-z-]{1,40}\.(html|css)$/.test(path)){const file=join(root,'public',path);if(!existsSync(file))return json(404,{error:'Página no encontrada.'});res.writeHead(200,{'Content-Type':TYPES[path.split('.').pop()],'Cache-Control':'public, max-age=3600'});res.end(readFileSync(file));return;}
@@ -140,6 +151,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     if(path==='/api/state'){const pending=ctx.role==='client'&&!ctx.account.linked;
      return json(200,{connection:c.snapshot(),messages:pending?[]:store.list(w,'messages',100).map(m=>({...lite(m),conversationJid:c.history.canonical(m.jid)})),totalMessages:store.count(w,'messages'),chats:pending?[]:store.list(w,'chats',2000),totalChats:store.count(w,'chats'),bot:{...b.config(),aiAvailable:!!respond},queue:store.list(w,'queue',100).map(j=>({state:j.state,timestamp:j.timestamp})),checkedAt:Date.now(),
       workspace:ctx.role==='owner'?{name:'Mi espacio',mode:'Privado • un propietario'}:{name:'+'+ctx.account.number,mode:ctx.account.demo?'Cuenta de demostración':'Tu cuenta'},role:ctx.role,account:ctx.role==='client'?{number:ctx.account.number,linked:!!ctx.account.linked,demo:!!ctx.account.demo,createdAt:ctx.account.createdAt}:null,
+      brand:(b=>b?{name:b.name,icon:!!b.icon192,updatedAt:b.updatedAt}:null)(brandAllowed(ctx)?store.get(w,'settings','brand'):null),brandEditable:brandAllowed(ctx),
       notifications:{devices:store.count(w,'push'),preview:store.get(w,'settings','push')?.preview!==false},tests:ctx.role==='owner'&&testEndpoints,keywordTest:ctx.role==='owner'?(t=>t&&{jid:t.jid,expiresAt:t.expiresAt,consumedAt:t.consumedAt||null})(store.get(w,'settings','keyword-test')):null});}
     if(path==='/api/messages'){const offset=Math.max(0,Math.min(10000000,Number(url.searchParams.get('offset'))||0));return json(200,{messages:store.list(w,'messages',100,offset).map(m=>({...lite(m),conversationJid:c.history.canonical(m.jid)})),total:store.count(w,'messages')});}
     if(path==='/api/chat/messages'){
@@ -207,7 +219,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    }
    if(req.method!=='POST')return json(404,{error:'Ruta no encontrada.'});
    if(!origins.has(req.headers.origin)||req.headers['content-type']!=='application/json')return json(403,{error:'Solicitud no permitida.'});
-   let body='';const limit=path==='/api/bot/config'?128000:4096;for await(const chunk of req){body+=chunk;if(Buffer.byteLength(body)>limit)return json(413,{error:'Solicitud demasiado grande.'});}
+   let body='';const limit=path==='/api/bot/config'?128000:path==='/api/brand'?1600000:4096;for await(const chunk of req){body+=chunk;if(Buffer.byteLength(body)>limit)return json(413,{error:'Solicitud demasiado grande.'});}
    let input;try{input=JSON.parse(body||'{}');if(!input||typeof input!=='object'||Array.isArray(input))throw new Error();}catch{return json(400,{error:'Solicitud inválida.'});}
    if(path==='/api/login'){
     if(!ownerHost(host))return json(404,{error:'Ruta no encontrada.'});
@@ -280,11 +292,21 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     ctx.account.passwordHash=await hashPassword(input.password);store.put('system','accounts',ctx.account.id,ctx.account);
     dropSessions(ctx.account.id,sidHash);
    }
+   else if(path==='/api/brand'){
+    if(!brandAllowed(ctx))return json(404,{error:'Ruta no encontrada.'});
+    if(input.reset===true){store.remove(w,'settings','brand');return json(200,{brand:null});}
+    const name=typeof input.name==='string'?input.name.replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,30).toWellFormed():'';if(!name)throw new Error('Escribe un nombre de hasta 30 caracteres.');
+    const prior=store.get(w,'settings','brand')||{},brand={name,updatedAt:Date.now()};
+    // Logo: two square PNGs made in the browser (192 and 512 px); checked by signature and size, never served as anything else.
+    for(const [field,px,max] of [['icon192',192,250000],['icon512',512,900000]]){const v=input[field];if(v===undefined){if(prior[field])brand[field]=prior[field];continue;}if(typeof v!=='string'||!v.startsWith('data:image/png;base64,'))throw new Error('El logo debe ser una imagen.');const buf=Buffer.from(v.slice(22),'base64'),dims=pngSize(buf);if(!dims||dims[0]!==px||dims[1]!==px||buf.length>max)throw new Error('No se pudo usar esa imagen como logo.');brand[field]=buf.toString('base64');}
+    if(!brand.icon192!==!brand.icon512)throw new Error('No se pudo usar esa imagen como logo.');
+    store.put(w,'settings','brand',brand);return json(200,{brand:{name:brand.name,icon:!!brand.icon192,updatedAt:brand.updatedAt}});
+   }
    else if(path==='/api/presence'){const tab=typeof input.tab==='string'&&/^[a-z0-9-]{1,64}$/i.test(input.tab)?input.tab:'',key=w+'|'+sidHash+':'+tab;if(input.visible===true)visible.set(key,Date.now());else visible.delete(key);}
    else if(path==='/api/push/subscribe'){const sub=validSubscription(input.subscription),id=hash(sub.endpoint);store.put(w,'push',id,{...sub,id,session:sidHash,createdAt:Date.now()});store.trim(w,'push',10);}
    else if(path==='/api/push/unsubscribe'){if(typeof input.endpoint==='string')store.remove(w,'push',hash(input.endpoint));}
    else if(path==='/api/push/settings'){if(typeof input.preview!=='boolean')throw new Error('Ajuste inválido');store.put(w,'settings','push',{preview:input.preview});}
-   else if(path==='/api/push/test'){const keys=vapidKeys(store),subs=store.list(w,'push',-1);let sent=0;for(const sub of subs){const r=await pushSender(sub,JSON.stringify({title:'Conversa',body:'Las notificaciones funcionan en este dispositivo.',tag:'conversa-test'}),keys,{subject:pushSubject}).catch(()=>({}));if(r.ok)sent++;if(r.gone)store.remove(w,'push',sub.id);}return json(200,{sent,devices:subs.length});}
+   else if(path==='/api/push/test'){const keys=vapidKeys(store),subs=store.list(w,'push',-1),brand=store.get(w,'settings','brand');let sent=0;for(const sub of subs){const r=await pushSender(sub,JSON.stringify({title:brand?.name||'Conversa',body:'Notificaciones activas.',tag:'conversa-test',...(brand?.icon192?{icon:'/brand/icon-192.png?v='+brand.updatedAt}:{})}),keys,{subject:pushSubject}).catch(()=>({}));if(r.ok)sent++;if(r.gone)store.remove(w,'push',sub.id);}return json(200,{sent,devices:subs.length});}
    else if(path==='/api/connect'){
     // Clients link (or re-link) with a code for their own number; the owner keeps the QR.
     if(ctx.role==='client'&&!ctx.account.demo&&(!ctx.account.linked||!store.get(w,'auth','creds'))){if(limited('pair|'+ctx.account.id,6,3600000))throw new Error('Pediste muchos códigos. Espera un rato e inténtalo de nuevo.');await c.pair(ctx.account.number);}

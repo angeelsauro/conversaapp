@@ -4,7 +4,7 @@ self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
 self.addEventListener('push',event=>{
  let data={};try{data=event.data?.json()||{};}catch{}
  // Browsers require a visible notification for every push; the server skips pushes while a panel is on screen.
- event.waitUntil(self.registration.showNotification(data.title||'Conversa',{body:data.body||'Tienes un mensaje nuevo',tag:data.tag||'conversa',renotify:true,icon:'/icon-192.png',badge:'/icon-192.png',data:{jid:data.jid||''}}));
+ event.waitUntil(self.registration.showNotification(data.title||'Conversa',{body:data.body||'Tienes un mensaje nuevo',tag:data.tag||'conversa',renotify:true,...(typeof data.icon==='string'&&data.icon.startsWith('/brand/')?{icon:data.icon}:{icon:'/icon-192.png',badge:'/icon-192.png'}),data:{jid:data.jid||''}}));
 });
 self.addEventListener('notificationclick',event=>{
  event.notification.close();const jid=event.notification.data?.jid||'';

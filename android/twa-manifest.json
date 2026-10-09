@@ -1,0 +1,42 @@
+{
+  "packageId": "com.andinamusic.conversa",
+  "host": "[DOMINIO-APP]",
+  "name": "Conversa",
+  "launcherName": "Conversa",
+  "display": "standalone",
+  "orientation": "portrait",
+  "themeColor": "#123F3C",
+  "themeColorDark": "#123F3C",
+  "navigationColor": "#123F3C",
+  "navigationColorDark": "#0C2E2B",
+  "navigationDividerColor": "#123F3C",
+  "navigationDividerColorDark": "#0C2E2B",
+  "backgroundColor": "#0C2E2B",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "fullScopeUrl": "https://[DOMINIO-APP]/",
+  "iconUrl": "https://[DOMINIO-APP]/icon-512.png",
+  "maskableIconUrl": "https://[DOMINIO-APP]/icon-maskable-512.png",
+  "webManifestUrl": "https://[DOMINIO-APP]/manifest.webmanifest",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "[RUTA-AL-KEYSTORE]/conversa-upload.keystore",
+    "alias": "conversa-upload"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "minSdkVersion": 21,
+  "fallbackType": "customtabs",
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "shortcuts": [],
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "fingerprints": [],
+  "generatorApp": "bubblewrap-cli"
+}
