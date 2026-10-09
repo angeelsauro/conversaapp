@@ -204,3 +204,34 @@ Un revisor independiente auditó el cambio completo. Encontró 1 problema alto, 
   - en el panel: la velocidad del audio se perdía al redibujar, una reacción fallida deshacía otra posterior y un envío fallido perdía la cita;
   - el aviso de presencia se envía con `keepalive`.
 - Las 5 pruebas de test/media-security.test.mjs fallan con el código anterior y pasan con el corregido. Tras las correcciones, el navegador pasa de nuevo 51 y 52 comprobaciones.
+
+## Versión 0.4.1 (9 de octubre de 2026): perfil del contacto y revisión de uso con datos reales
+
+Primera prueba con la cuenta real del propietario (609 chats): aparecían burbujas «Archivo», no se podía abrir el perfil del contacto y «Pedir más historial» daba un error genérico.
+
+### Cambios
+
+- **Perfil del contacto:** se abre al tocar la foto o el nombre, o con ⋮. Muestra:
+  - la foto grande (se pide a WhatsApp al abrirla) y el número, con «WhatsApp» (wa.me), «Copiar número» y «Buscar»;
+  - la info del contacto, si su privacidad lo permite;
+  - fotos, videos y documentos compartidos;
+  - las opciones del bot para ese chat.
+- **Búsqueda dentro del chat:** recorre los mensajes cargados; Enter va a la coincidencia anterior.
+- **Botón para ir al último mensaje,** con el número de mensajes que llegaron mientras leías arriba.
+- **Tipos de mensaje nuevos:**
+  - tarjetas para ubicación (con «Abrir en el mapa»), contacto, encuesta, evento, invitación a grupo y llamada;
+  - videos circulares y stickers animados;
+  - «Se eliminó este mensaje» y «editado»; solo el autor, dentro del mismo chat, puede borrar o editar;
+  - los mensajes que solo traen datos internos de WhatsApp ya no aparecen como «Archivo»; los tipos desconocidos dicen «Mensaje no compatible».
+- **Enlaces que se pueden pulsar:** solo http(s), en otra pestaña y con `noopener noreferrer`.
+- **Copiar un mensaje,** filtro «No leídos» y Esc para cerrar el perfil y la búsqueda.
+- **Lista de chats más limpia:** los contactos sin conversación que llegan con la agenda de WhatsApp ya no llenan la lista; aparecen al buscarlos. Los contactos sin nombre muestran su número.
+- **«Pedir mensajes anteriores»:**
+  - busca la referencia en todas las direcciones del contacto (antes fallaba si los mensajes estaban guardados con la otra dirección);
+  - se desactiva cuando el chat no tiene mensajes, porque WhatsApp no puede entregar historial sin uno de referencia;
+  - explica el motivo en lugar de «No se pudo completar la acción».
+
+### Verificación
+
+- `npm test`: 56 pruebas aprobadas, 0 fallidas (3 nuevas en test/profile.test.mjs).
+- Navegador real: 62 comprobaciones contra `npm run preview` y 63 contra la demo. Incluyen el perfil con número y archivos, abrir una foto desde el perfil, Esc, la tarjeta de ubicación con su enlace al mapa, el mensaje eliminado, un enlace seguro, la búsqueda en el chat y el perfil a pantalla completa en el móvil.

@@ -37,6 +37,22 @@ Desde 0.3.0, /api/state incluye hasta 2000 chats y `totalChats`. Cada chat lleva
 - **GET /api/avatar?jid=:** foto de perfil pequeña ('preview'), guardada cifrada. El servidor la pide a WhatsApp en segundo plano, de una en una, empezando por los chats recientes, y la refresca a diario. Solo descarga URLs `https` de `*.whatsapp.net`, de 300 KB como máximo, en JPEG, PNG o WebP. Devuelve 404 si no hay foto.
 - **GET /api/push/key:** clave pública VAPID para `pushManager.subscribe`.
 
+### Desde 0.4.1
+
+- **GET /api/contact?jid=:** perfil del contacto. Devuelve {jid, name, number, photo, about, files:{photos, documents, audio}}.
+  - `number` es `null` si WhatsApp solo dio un identificador LID.
+  - `about` se pide a WhatsApp solo al abrir el perfil y se guarda una hora en memoria.
+- **GET /api/chat/media?jid=:** fotos, videos y documentos del chat, del más reciente al más antiguo. Hasta 120, con miniatura y `available`.
+- **GET /api/avatar/full?jid=:** foto de perfil grande. Se pide a WhatsApp al abrirla, con las mismas restricciones que /api/avatar y 1,5 MB como máximo; se guarda una hora en memoria con `no-store`.
+- **Nuevos `kind` de mensaje:**
+  - `location`, `contact`, `poll`, `event`, `invite` y `call`, con `detail` ({name, address, lat, lng, phone, options…});
+  - `deleted` (tras «eliminar para todos»: sin texto, archivo ni reacciones);
+  - `edited: true` en los mensajes editados;
+  - los videos circulares (ptv) llegan como `video` y los stickers animados como `sticker`;
+  - los mensajes que solo traen datos internos de WhatsApp no se guardan;
+  - un mensaje guardado como `other` se completa si WhatsApp lo vuelve a entregar.
+- **POST /api/history/more:** busca el mensaje de referencia entre todas las direcciones del contacto (PN y LID). Si el chat no tiene ninguno, responde 400 con una explicación legible.
+
 ## Mutaciones autenticadas
 
 - POST /api/logout y /api/revoke-sessions.

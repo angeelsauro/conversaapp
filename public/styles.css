@@ -416,3 +416,94 @@ dialog.lightbox::backdrop{background:#000C}
 [data-theme=dark] .nav b{box-shadow:0 0 0 2px #0F1C1A}
 [data-theme=dark] .conversation-list{background:#0A1514}
 }
+
+/* 0.4.1 · Perfil del contacto, búsqueda en el chat, tarjetas (ubicación, contacto, encuesta…), enlaces y «ir al final». */
+.profile-open{flex:1;min-width:0;display:flex;align-items:center;gap:12px;background:transparent;padding:4px 8px 4px 4px;min-height:52px;border-radius:14px;text-align:left;font-weight:400;color:inherit}
+.profile-open:hover{background:#0000000A}
+.detail-name{display:block;font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0 0 3px;letter-spacing:-.2px}
+.conversation{overflow:hidden}
+.profile{position:absolute;top:0;right:0;bottom:0;width:min(400px,100%);z-index:9;display:flex;flex-direction:column;background:var(--surface);border-left:1px solid var(--line);box-shadow:-18px 0 40px #0F2E281F;animation:profile-in .22s cubic-bezier(.2,.8,.3,1)}
+@keyframes profile-in{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
+.profile-top{display:flex;align-items:center;gap:8px;padding:12px 14px;min-height:64px;border-bottom:1px solid var(--line);font-size:15px}
+.profile-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding-bottom:24px;background:#F3F7F5}
+.profile-hero{text-align:center;padding:26px 20px 20px;background:var(--surface);border-bottom:1px solid var(--line)}
+.profile-photo{padding:0;min-height:0;border-radius:50%;background:transparent;cursor:zoom-in}
+.profile-photo .contact-avatar,#profile-avatar{width:132px!important;height:132px!important;min-width:132px;font-size:44px!important;box-shadow:0 10px 30px #0F2E2830}
+.profile-hero h2{margin:16px 0 4px;font-size:22px;overflow-wrap:anywhere}
+.profile-number{margin:0;color:var(--muted);font-size:15px;font-variant-numeric:tabular-nums}
+.profile-actions{display:flex;justify-content:center;gap:10px;margin-top:18px;flex-wrap:wrap}
+.profile-action{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:92px;padding:12px 10px;border-radius:14px;border:1px solid var(--line);background:var(--surface);color:var(--accent-dark);font-size:12.5px;font-weight:650;text-decoration:none;min-height:0}
+.profile-action:hover{background:#EEF6F1}
+.profile-action[hidden]{display:none}
+.profile-card{margin:12px 12px 0;padding:16px;border-radius:16px;background:var(--surface);border:1px solid var(--line)}
+.profile-card h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.profile-card p{margin:0 0 8px;font-size:14px;line-height:1.55;overflow-wrap:anywhere}
+.profile-card-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.profile-media{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:4px}
+.profile-media:empty{display:none}
+.profile-thumb{position:relative;aspect-ratio:1;padding:0;min-height:0;border-radius:10px;overflow:hidden;background:#D9E8E0;color:var(--muted);display:grid;place-items:center}
+.profile-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.profile-thumb:hover img{transform:scale(1.04);transition:transform .2s}
+.thumb-play{position:absolute;right:6px;bottom:6px;background:#0009;color:#fff;font-size:10px;border-radius:8px;padding:2px 6px}
+.profile-docs{display:grid;gap:6px;margin-top:10px}
+.profile-docs:empty{display:none}
+.profile-doc{display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;background:#0000000A;color:inherit;text-decoration:none;min-width:0}
+.profile-doc strong{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.profile-doc small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.profile-doc>span{min-width:0}
+.profile-status{font-weight:700}
+.profile-status span{display:inline-flex;align-items:center;gap:6px}
+.profile-status span:before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+.profile-buttons{display:grid;gap:8px;margin-top:6px}
+.profile-buttons button{width:100%;font-size:13.5px!important;min-height:44px!important}
+/* In-chat search */
+.chat-find{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--line)}
+.chat-find>.icon{color:var(--muted);width:18px;height:18px}
+.chat-find input{flex:1;border:0;background:transparent;padding:8px 0;min-height:40px;outline:none}
+.chat-find input:focus-visible{outline:none}
+.chat-find .muted{white-space:nowrap;font-size:12.5px}
+.bubble.find-hit{box-shadow:0 0 0 2px #F2C94C}
+.bubble.find-current{box-shadow:0 0 0 3px #E8A317}
+/* Go to latest */
+.scroll-bottom{position:absolute;right:22px;bottom:96px;z-index:7;width:46px;height:46px;min-height:0;padding:0;border-radius:50%;display:grid;place-items:center;background:var(--surface);color:var(--accent-dark);box-shadow:0 6px 18px #0F2E2833;animation:pop-in .16s ease-out}
+.scroll-bottom b{position:absolute;top:-6px;right:-4px;min-width:22px;height:22px;line-height:22px;padding:0 6px;border-radius:11px;background:var(--accent);color:#fff;font-size:12px;font-weight:800}
+#chat-detail{position:relative}
+/* Cards, deleted and edited messages, links */
+.info-card{display:flex;flex-wrap:wrap;align-items:center;gap:11px;min-width:min(250px,62vw);max-width:340px;padding:4px 2px 18px}
+.info-card .media-info{flex:1;min-width:0}
+.info-card .media-info strong{display:block;font-size:14.5px;overflow-wrap:anywhere}
+.info-card .media-info span{display:block;font-size:12.5px;color:#566B64;margin-top:2px;overflow-wrap:anywhere}
+.poll-options{list-style:none;padding:0;margin:4px 0 0;width:100%;display:grid;gap:5px}
+.poll-options li{padding:8px 10px;border-radius:10px;background:#0000000D;font-size:13.5px;overflow-wrap:anywhere}
+.card-link{width:100%;text-align:center;padding:9px;border-radius:10px;background:#0000000D;color:var(--accent-dark);font-weight:700;font-size:13px;text-decoration:none}
+.card-link:hover{background:#00000014}
+.deleted-text{display:flex;align-items:center;gap:6px;font-style:italic;color:#6A7C75!important}
+.deleted-text .icon{width:15px;height:15px}
+.chat-preview.is-deleted{font-style:italic}
+.edited{font-size:11px;font-style:italic;margin-right:4px}
+.bubble p .msg-link{color:#1867C0;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
+.outgoing p .msg-link{color:#0F5F45}
+@media(max-width:680px){.profile{width:100%;border-left:0}.profile-photo .contact-avatar,#profile-avatar{width:120px!important;height:120px!important;min-width:120px}.scroll-bottom{right:14px;bottom:86px}.profile-open{gap:8px;padding:2px 4px}.detail-name{font-size:16px}}
+@media(prefers-reduced-motion:reduce){.profile,.scroll-bottom{animation:none}}
+[data-theme=dark] .profile{border-color:#21342F;box-shadow:-18px 0 40px #0008}
+[data-theme=dark] .profile-scroll{background:#0D1917}
+[data-theme=dark] .profile-hero,[data-theme=dark] .profile-card,[data-theme=dark] .chat-find,[data-theme=dark] .profile-top{background:#13221F;border-color:#21342F}
+[data-theme=dark] .profile-action{background:#13221F;border-color:#284039;color:#7FE0B5}
+[data-theme=dark] .profile-action:hover,[data-theme=dark] .profile-open:hover{background:#183631}
+[data-theme=dark] .profile-thumb{background:#1D302B}
+[data-theme=dark] .profile-doc,[data-theme=dark] .poll-options li,[data-theme=dark] .card-link{background:#FFFFFF0F}
+[data-theme=dark] .info-card .media-info span{color:#A9BEB8}
+[data-theme=dark] .chat-find input{color:#E6F1ED}
+[data-theme=dark] .deleted-text{color:#97ACA6!important}
+[data-theme=dark] .bubble p .msg-link{color:#8CC2FF}
+[data-theme=dark] .outgoing p .msg-link{color:#BFF3DC}
+[data-theme=dark] .scroll-bottom{background:#1A2B28;color:#7FE0B5;box-shadow:0 6px 18px #0009}
+.profile-top{flex-direction:row!important;justify-content:flex-start!important;align-items:center!important;margin:0!important;gap:10px!important}
+.profile-top strong{flex:1;font-size:16px}
+.profile-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));max-width:340px;margin-left:auto;margin-right:auto}
+.profile-action{min-width:0;padding:12px 6px}
+.profile-action span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.chat-find input::-webkit-search-cancel-button{display:none}
+.chat-filters{overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap}
+.chat-filters::-webkit-scrollbar{display:none}
+.chat-filters button{flex:none}

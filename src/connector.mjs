@@ -95,6 +95,8 @@ export class Connector {
   const body=encrypted.subarray(0,-10),mac=createHmac('sha256',macKey).update(iv).update(body).digest().subarray(0,10);
   if(!timingSafeEqual(mac,encrypted.subarray(-10)))throw new Error('BAD_MAC');
   const decipher=createDecipheriv('aes-256-cbc',cipherKey,iv);return Buffer.concat([decipher.update(body),decipher.final()]);}
- async profilePicture(jid){if(this.status!=='connected'||!this.socket?.profilePictureUrl)throw new Error('OFFLINE');return this.socket.profilePictureUrl(jid,'preview',8000);}
+ async profilePicture(jid,type='preview'){if(this.status!=='connected'||!this.socket?.profilePictureUrl)throw new Error('OFFLINE');return this.socket.profilePictureUrl(jid,type==='image'?'image':'preview',8000);}
+ // The contact's «info» text, only when the owner opens their profile. WhatsApp may hide it by privacy settings.
+ async contactAbout(jid){if(this.status!=='connected'||!this.socket?.fetchStatus)return null;let timer;try{const r=await Promise.race([this.socket.fetchStatus(jid),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),6000);})]);const s=Array.isArray(r)?r[0]?.status:r?.status;const text=typeof s==='string'?s:s?.status;return typeof text==='string'&&text.trim()?text.slice(0,300):null;}catch{return null;}finally{clearTimeout(timer);}}
  async disconnect(){const sock=this.socket;let timer;try{if(sock&&this.status==='connected')await Promise.race([sock.logout(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),8000);})]);else if(this.store.get(this.workspace,'auth','creds'))throw new Error('offline');}catch{throw new Error('No se pudo desvincular. Reanuda o elimina Conversa en Dispositivos vinculados del teléfono.');}finally{clearTimeout(timer);}this.pause();this.store.clear(this.workspace,'auth');this.identity=null;this.status='disconnected';this.note='Sesión desvinculada; se conserva la exclusión de chats antiguos.';}
 }

@@ -1,12 +1,16 @@
 export const direct = jid => typeof jid==='string' && /@(s\.whatsapp\.net|lid)$/.test(jid);
-const MEDIA=[['imageMessage','image'],['videoMessage','video'],['audioMessage','audio'],['documentMessage','document'],['stickerMessage','sticker']];
+const MEDIA=[['imageMessage','image'],['videoMessage','video'],['ptvMessage','video'],['audioMessage','audio'],['documentMessage','document'],['stickerMessage','sticker']];
+// Bookkeeping parts of a message with nothing visible of their own; a message made only of these is not shown.
+const QUIET=new Set(['senderKeyDistributionMessage','fastRatchetKeySenderKeyDistributionMessage','messageContextInfo','contextInfo','encReactionMessage','pollUpdateMessage','keepInChatMessage','pinInChatMessage','encCommentMessage','encEventResponseMessage','messageHistoryBundle','messageHistoryNotice','placeholderMessage','stickerSyncRmrMessage','secretEncryptedMessage','botInvokeMessage','botTaskMessage','limitSharingMessage','statusNotificationMessage','requestPhoneNumberMessage']);
+const str=(v,n)=>typeof v==='string'&&v.trim()?v.slice(0,n).toWellFormed():undefined;
+const vcardPhone=v=>{const m=typeof v==='string'&&/TEL[^:\n]*:([+\d\s().-]{5,30})/.exec(v);return m?m[1].replace(/[^\d+]/g,'').slice(0,20):undefined;};
 const b64=v=>v instanceof Uint8Array?Buffer.from(v).toString('base64'):v?.type==='Buffer'&&Array.isArray(v.data)?Buffer.from(v.data).toString('base64'):typeof v==='string'?v:'';
 const num=v=>typeof v==='number'?v:v&&typeof v.low==='number'?(v.high>>>0)*4294967296+(v.low>>>0):Number(v)||0;
 // Ephemeral and document-with-caption containers are opened; view-once content is flagged and never unwrapped.
 const isViewOnce=c=>!!(c?.viewOnceMessage||c?.viewOnceMessageV2||c?.viewOnceMessageV2Extension||c?.imageMessage?.viewOnce||c?.videoMessage?.viewOnce||c?.audioMessage?.viewOnce);
-function unwrap(message){let content=message;for(let i=0;i<4;i++){if(isViewOnce(content))return {content,viewOnce:true};const inner=content?.ephemeralMessage?.message||content?.documentWithCaptionMessage?.message;if(!inner)break;content=inner;}
+function unwrap(message){let content=message;for(let i=0;i<4;i++){if(isViewOnce(content))return {content,viewOnce:true};const inner=content?.ephemeralMessage?.message||content?.documentWithCaptionMessage?.message||content?.editedMessage?.message||content?.lottieStickerMessage?.message;if(!inner)break;content=inner;}
  // Deeper nesting than WhatsApp ever sends is treated as unreadable, never as ordinary content.
- if(isViewOnce(content))return {content,viewOnce:true};if(content?.ephemeralMessage||content?.documentWithCaptionMessage)return {content:null,viewOnce:false};return {content,viewOnce:false};}
+ if(isViewOnce(content))return {content,viewOnce:true};if(content?.ephemeralMessage||content?.documentWithCaptionMessage||content?.editedMessage||content?.lottieStickerMessage)return {content:null,viewOnce:false};return {content,viewOnce:false};}
 // WhatsApp media paths (/v/t62.7118-24/…enc?…). Anything else could point the server at another host: never downloaded.
 export const safeMediaPath=p=>typeof p==='string'&&p.length<=1000&&/^\/v\/[\w./-]+(\?[\w=&%.-]*)?$/.test(p)&&!p.includes('..');
 const mediaOf=content=>{const [type,kind]=MEDIA.find(([t])=>content?.[t])||[];return type?{type,kind,media:content[type]}:{};};
@@ -17,9 +21,19 @@ export function messageRecord(raw) {
   if(!content||content.protocolMessage||content.reactionMessage) return null;
   const {kind:mediaKind,media}=viewOnce?{}:mediaOf(content);
   const text=viewOnce?'':content.conversation||content.extendedTextMessage?.text||media?.caption||'';
-  const kind=viewOnce?'view_once':mediaKind||(text?'text':'other');
+  if(!viewOnce&&!Object.keys(content).some(k=>content[k]!=null&&!QUIET.has(k)))return null;
+  let kind=viewOnce?'view_once':mediaKind||(text?'text':'other'),detail;
+  // Visible WhatsApp messages without text or file: shown as cards with their essential, contact-provided details.
+  if(kind==='other'){const loc=content.locationMessage||content.liveLocationMessage,contact=content.contactMessage,contacts=content.contactsArrayMessage,poll=content.pollCreationMessage||content.pollCreationMessageV2||content.pollCreationMessageV3||content.pollCreationMessageV4||content.pollCreationMessageV5,event=content.eventMessage,invite=content.groupInviteMessage,call=content.callLogMesssage||content.call||content.bcallMessage||content.scheduledCallCreationMessage;
+   if(loc){const lat=Number(loc.degreesLatitude),lng=Number(loc.degreesLongitude),ok=Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180;kind='location';detail={name:str(loc.name,120),address:str(loc.address,200),...(ok?{lat:Number(lat.toFixed(6)),lng:Number(lng.toFixed(6))}:{}),live:content.liveLocationMessage?true:undefined};}
+   else if(contact||contacts){const list=contact?[contact]:Array.isArray(contacts.contacts)?contacts.contacts:[];kind='contact';detail={name:str(contact?.displayName||contacts?.displayName||list[0]?.displayName,120),phone:vcardPhone(list[0]?.vcard),count:list.length>1?list.length:undefined};}
+   else if(poll){kind='poll';detail={name:str(poll.name,200),options:(Array.isArray(poll.options)?poll.options:[]).slice(0,12).map(o=>str(o?.optionName,100)).filter(Boolean)};}
+   else if(event){kind='event';detail={name:str(event.name,200),description:str(event.description,300)};}
+   else if(invite){kind='invite';detail={name:str(invite.groupName,120)};}
+   else if(call){kind='call';detail={video:call.isVideo?true:undefined};}}
   const record={id:`${jid}:${raw.key.id}`,key:raw.key,jid,name:(raw.pushName||'Contacto').slice(0,100),text:String(text).slice(0,8000),kind,viewOnce,timestamp,fromMe:!!raw.key.fromMe};
   // Media metadata and WhatsApp's inline preview only; the file itself is fetched on demand and never stored.
+  if(detail)record.detail=detail;
   if(media){record.media={mimetype:String(media.mimetype||'').slice(0,100),size:num(media.fileLength),seconds:num(media.seconds)||undefined,ptt:!!media.ptt||undefined,name:media.fileName?String(media.fileName).slice(0,200).toWellFormed():undefined,width:num(media.width)||undefined,height:num(media.height)||undefined};const thumb=b64(media.jpegThumbnail);if(thumb&&thumb.length<=16000)record.media.thumb=thumb;}
   const ctx=(content.extendedTextMessage||media)?.contextInfo;
   if(ctx?.stanzaId&&ctx.quotedMessage){const q=unwrap(ctx.quotedMessage),qm=q.viewOnce?{}:mediaOf(q.content);record.quote={id:String(ctx.stanzaId).slice(0,128),text:q.viewOnce?'':String(q.content?.conversation||q.content?.extendedTextMessage?.text||qm.media?.caption||'').slice(0,300),kind:q.viewOnce?'view_once':qm.kind||'text',participant:typeof ctx.participant==='string'?ctx.participant:undefined};}
@@ -32,7 +46,7 @@ export function mediaSource(raw) {
   return {key:{remoteJid:raw.key.remoteJid,id:raw.key.id,fromMe:!!raw.key.fromMe},type,message:{directPath:m.directPath,mediaKey:b64(m.mediaKey),fileEncSha256:b64(m.fileEncSha256)||undefined,fileSha256:b64(m.fileSha256)||undefined,fileLength:num(m.fileLength),mimetype:m.mimetype||undefined,mediaKeyTimestamp:num(m.mediaKeyTimestamp)||undefined}};
 }
 
-export const preview = m => ({text:(m.text||'').slice(0,200),kind:m.kind,fromMe:!!m.fromMe,bot:!!m.bot,timestamp:m.timestamp});
+export const preview = m => ({text:(m.text||m.detail?.name||'').slice(0,200),kind:m.kind,fromMe:!!m.fromMe,bot:!!m.bot,timestamp:m.timestamp});
 
 // Absence from a partial WhatsApp history is never evidence that a chat is new.
 export class History {
@@ -62,7 +76,7 @@ export class History {
       const ids=[raw.key.remoteJid,raw.key.remoteJidAlt];
       this.map({pn:ids.find(x=>x?.endsWith('@s.whatsapp.net')),lid:ids.find(x=>x?.endsWith('@lid'))});
     }
-    const reaction=unwrap(raw.message).content?.reactionMessage;if(reaction)return this.react(raw,reaction,source);
+    const inner=unwrap(raw.message).content;if(inner?.reactionMessage)return this.react(raw,inner.reactionMessage,source);if(inner?.protocolMessage)return this.amend(raw,inner.protocolMessage);
     const msg=messageRecord(raw);if(!msg)return;
     const existing=this.store.get(this.w,'messages',msg.id),chat=this.chat(msg.jid),cutoff=this.meta().firstLinkedAt;
     if(chat.deleted)return;
@@ -80,7 +94,8 @@ export class History {
     if(!existing&&!seen&&source==='live')chat.unread=msg.fromMe?0:(chat.unread||0)+1;
     this.save(chat);
     if(!seen)this.store.put(this.w,'seen',raw.key.id,{first:msg.id});
-    if(existing){if(!existing.key)this.store.put(this.w,'messages',msg.id,{...existing,key:msg.key,fromMe:msg.fromMe});return existing;}
+    // Re-delivered history can fill in a message an older version could not read (stored as «other»).
+    if(existing){const better=existing.kind==='other'&&msg.kind!=='other'&&!existing.deletedAt;if(better||!existing.key)this.store.put(this.w,'messages',msg.id,better?{...existing,...msg,source:existing.source}:{...existing,key:msg.key,fromMe:msg.fromMe});if(better){const file=mediaSource(raw);if(file)this.store.put(this.w,'media',msg.id,file);}return existing;}
     // The same message can arrive again under the contact's other address (PN/LID): keep a single copy.
     if(seen&&seen.first!==msg.id){const first=this.store.get(this.w,'messages',seen.first);if(first)return first;}
     // A quoted message is attributed from the stored original when we have it.
@@ -111,6 +126,16 @@ export class History {
     if(emoji&&who==='contact'&&source==='live'){const timestamp=Number(raw.messageTimestamp)*1000||Date.now();if(timestamp>=(chat.last?.timestamp||0))chat.last={text:`Reaccionó ${emoji} a «${(target.text||'').slice(0,60)}»`,kind:'reaction',fromMe:false,bot:false,timestamp};}
     this.save(chat);
     return target;
+  }
+  // «Delete for everyone» and edits: only the author, inside the same chat. A deleted message keeps no text, file or reactions.
+  amend(raw,p) {
+    const type=Number(p.type),id=p.key?.id;if(!id||![0,14].includes(type)||!direct(raw.key?.remoteJid))return;
+    const seen=this.store.get(this.w,'seen',id),target=(seen&&this.store.get(this.w,'messages',seen.first))||this.store.get(this.w,'messages',`${this.canonical(raw.key.remoteJid)}:${id}`);
+    if(!target||this.canonical(target.jid)!==this.canonical(raw.key.remoteJid)||!!target.fromMe!==!!raw.key.fromMe)return;
+    if(type===0){for(const k of ['media','quote','reactions','detail','edited'])delete target[k];Object.assign(target,{text:'',kind:'deleted',deletedAt:Date.now()});this.store.remove(this.w,'media',target.id);}
+    else{if(target.deletedAt)return;const e=unwrap(p.editedMessage).content,text=e?.conversation||e?.extendedTextMessage?.text||mediaOf(e).media?.caption;if(typeof text!=='string'||!text.trim())return;target.text=text.slice(0,8000);target.edited=true;}
+    this.store.put(this.w,'messages',target.id,target);
+    const chat=this.chat(target.jid);if(chat.deleted)return target;chat.rev=Date.now();if(chat.last&&chat.last.timestamp===target.timestamp)chat.last=preview(target);this.save(chat);return target;
   }
   // One-time fill of chat.last for chats stored before 0.3 (their messages are already there).
   backfillLast() {

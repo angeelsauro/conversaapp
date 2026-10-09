@@ -16,7 +16,7 @@ export const testEndpointsEnabled=(env=process.env)=>env.CONVERSA_TEST_ENDPOINTS
 const PUBLIC={'/':'index.html','/app.js':'app.js','/theme.js':'theme.js','/sw.js':'sw.js','/styles.css':'styles.css','/icon.svg':'icon.svg','/manifest.webmanifest':'manifest.webmanifest','/icon-192.png':'icon-192.png','/icon-512.png':'icon-512.png','/icon-maskable-512.png':'icon-maskable-512.png','/apple-touch-icon.png':'apple-touch-icon.png'};
 const TYPES={html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',svg:'image/svg+xml; charset=utf-8',webmanifest:'application/manifest+json; charset=utf-8',png:'image/png'};
 // Files the browser may show or play in place; anything else (documents, unknown types) is only downloaded.
-const INLINE=/^(image\/(jpeg|png|webp|gif)|audio\/(ogg|mpeg|mp4|aac|webm|amr|wav)|video\/(mp4|webm|3gpp))$/,MEDIA_MAX=25*1048576,LABELS={image:'📷 Foto',audio:'🎤 Mensaje de voz',video:'🎥 Video',document:'📄 Documento',sticker:'Sticker',view_once:'Visualización única'},REACTIONS=new Set(['👍','❤️','😂','😮','😢','🙏','']);
+const INLINE=/^(image\/(jpeg|png|webp|gif)|audio\/(ogg|mpeg|mp4|aac|webm|amr|wav)|video\/(mp4|webm|3gpp))$/,MEDIA_MAX=25*1048576,LABELS={image:'📷 Foto',audio:'🎤 Mensaje de voz',video:'🎥 Video',document:'📄 Documento',sticker:'Sticker',view_once:'Visualización única',location:'📍 Ubicación',contact:'👤 Contacto',poll:'📊 Encuesta',event:'📅 Evento',invite:'👥 Invitación a un grupo',call:'📞 Llamada'},REACTIONS=new Set(['👍','❤️','😂','😮','😢','🙏','']);
 export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data'),port=4318,connectorFactory,respond,publicOrigin=process.env.PUBLIC_ORIGIN,testEndpoints=testEndpointsEnabled(),pushSender=sendPush,avatarFetch=globalThis.fetch}={}) {
  const production=process.env.NODE_ENV==='production';
  if(production&&(!publicOrigin?.startsWith('https://')||!process.env.CONVERSA_KEY_FILE||!process.env.CONVERSA_OWNER_TOKEN_FILE))throw new Error('Production requires HTTPS origin and external secret files');
@@ -37,7 +37,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  // Topic and tag travel to Google/Apple: keyed HMAC of the chat, never something a phone number can be guessed from.
  const lastPush=new Map(),pushSubject=publicOrigin?.startsWith('https://')?publicOrigin:undefined,topicOf=jid=>store.index('owner','push-topic',jid).slice(0,32);
  async function notify(msg,chat){const subs=store.list('owner','push',-1);if(!subs.length||ownerWatching())return;const now=Date.now();if(now-(lastPush.get(chat.jid)||0)<3000)return;lastPush.set(chat.jid,now);
-  const hidden=store.get('owner','settings','push')?.preview===false,payload=JSON.stringify({title:hidden?'Conversa':chat.name,body:hidden?'Tienes un mensaje nuevo':msg.text?msg.text.slice(0,140).toWellFormed():LABELS[msg.kind]||'Mensaje nuevo',tag:topicOf(chat.jid).slice(0,16),jid:chat.jid});
+  const hidden=store.get('owner','settings','push')?.preview===false,payload=JSON.stringify({title:hidden?'Conversa':chat.name,body:hidden?'Tienes un mensaje nuevo':msg.text?msg.text.slice(0,140).toWellFormed():[LABELS[msg.kind]||'Mensaje nuevo',msg.detail?.name].filter(Boolean).join(': '),tag:topicOf(chat.jid).slice(0,16),jid:chat.jid});
   const keys=vapidKeys(store);for(const sub of subs){const r=await pushSender(sub,payload,keys,{topic:topicOf(chat.jid),subject:pushSubject}).catch(()=>({}));if(r.gone)store.remove('owner','push',sub.id);}}
  if(connector.history)connector.history.onIncoming=(msg,chat)=>{notify(msg,chat).catch(()=>{});};
  // Opened files live in memory only (LRU, 80 MB); the same file requested twice downloads once.
@@ -58,6 +58,11 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
   }finally{avatars.busy=false;}
  }
  const lite=m=>m.media?.thumb?{...m,media:{...m.media,thumb:undefined}}:m;
+ // Profile: large photo and «info» are fetched from WhatsApp only when the owner opens a profile (kept briefly in memory).
+ const profiles=new Map(),remember2=(map,key,value,limit)=>{map.delete(key);map.set(key,value);while(map.size>limit)map.delete(map.keys().next().value);};
+ async function profilePhoto(jid){const hit=profiles.get('photo:'+jid);if(hit&&Date.now()-hit.at<3600000)return hit;let photo={at:Date.now(),data:null};
+  try{const link=await connector.profilePicture(jid,'image'),u=link&&new URL(link);if(u&&u.protocol==='https:'&&/(^|\.)whatsapp\.net$/.test(u.hostname)){const r=await avatarFetch(u.href,{signal:AbortSignal.timeout(8000),redirect:'error'}),t=(r.headers.get('content-type')||'').split(';')[0].trim();if(r.ok&&/^image\/(jpeg|png|webp)$/.test(t)&&Number(r.headers.get('content-length')||0)<=1500000){const buf=Buffer.from(await r.arrayBuffer());if(buf.length<=1500000)photo={at:Date.now(),data:buf,type:t};}}}catch{}
+  remember2(profiles,'photo:'+jid,photo,20);return photo;}
  const equal=(a,b)=>typeof a==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
  const origins=new Set(publicOrigin?[publicOrigin]:[`http://127.0.0.1:${port}`,`http://localhost:${port}`]);
  const hosts=new Set([...origins].map(x=>new URL(x).host));const secure=publicOrigin?.startsWith('https://');
@@ -120,6 +125,22 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
      const a=store.get('owner','avatars',connector.history.canonical(jid));if(!a?.data)return json(404,{error:'Sin foto.'});
      const data=Buffer.from(a.data,'base64');res.writeHead(200,{'Content-Type':a.type,'Content-Length':data.length,'Cache-Control':'private, max-age=86400'});return res.end(data);
     }
+    if(path==='/api/contact'){
+     const jid=url.searchParams.get('jid');if(!direct(jid))return json(400,{error:'Chat inválido.'});const chat=connector.history.chat(jid);if(chat.deleted)return json(404,{error:'Chat borrado.'});
+     let about=profiles.get('about:'+chat.jid);if(!about||Date.now()-about.at>3600000){about={at:Date.now(),text:await connector.contactAbout?.(chat.jid)||null};if(about.text||connector.status==='connected')remember2(profiles,'about:'+chat.jid,about,200);}
+     const files=store.list('owner','messages',-1).filter(m=>connector.history.canonical(m.jid)===chat.jid&&['image','video','document','audio'].includes(m.kind));
+     return json(200,{jid:chat.jid,name:chat.name,number:/@s\.whatsapp\.net$/.test(chat.jid)?chat.jid.split('@')[0]:null,photo:chat.photo||null,about:about.text,files:{photos:files.filter(m=>['image','video'].includes(m.kind)).length,documents:files.filter(m=>m.kind==='document').length,audio:files.filter(m=>m.kind==='audio').length}});
+    }
+    if(path==='/api/chat/media'){
+     // Shared photos, videos and documents of one chat, newest first, with WhatsApp's small previews.
+     const jid=url.searchParams.get('jid');if(!direct(jid))return json(400,{error:'Chat inválido.'});const target=connector.history.canonical(jid);
+     const items=store.list('owner','messages',-1).filter(m=>connector.history.canonical(m.jid)===target&&['image','video','document'].includes(m.kind)).sort((a,b)=>b.timestamp-a.timestamp).slice(0,120);
+     return json(200,{items:items.map(m=>({id:m.id,kind:m.kind,text:m.text?m.text.slice(0,200):'',fromMe:!!m.fromMe,timestamp:m.timestamp,media:m.media?{...m.media,available:!!store.get('owner','media',m.id)}:null}))});
+    }
+    if(path==='/api/avatar/full'){
+     const jid=url.searchParams.get('jid');if(!direct(jid))return json(400,{error:'Chat inválido.'});const chat=connector.history.chat(jid);if(chat.deleted||connector.status!=='connected')return json(404,{error:'Sin foto.'});
+     const photo=await profilePhoto(chat.jid);if(!photo.data)return json(404,{error:'Sin foto.'});res.writeHead(200,{'Content-Type':photo.type,'Content-Length':photo.data.length,'Cache-Control':'private, no-store'});return res.end(photo.data);
+    }
     if(path==='/api/push/key')return json(200,{publicKey:vapidKeys(store).publicKey});
     if(path==='/api/export'){res.setHeader('Content-Disposition','attachment; filename="conversa-mensajes.json"');return json(200,{exportedAt:new Date().toISOString(),messages:store.list('owner','messages',-1),chats:store.list('owner','chats',-1)});}
     return json(404,{error:'Ruta no encontrada.'});
@@ -159,20 +180,21 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    else if(path==='/api/chat/review'){if(typeof input.enabled!=='boolean')throw new Error('Selección inválida');connector.history.review(input.jid,input.enabled);}
    else if(path==='/api/history/more'){
     if(!direct(input.jid))throw new Error('Chat inválido');
-    if(connector.status!=='connected')throw new Error('Conecta WhatsApp primero');
-    const oldest=store.list('owner','messages',-1).filter(m=>m.jid===input.jid&&m.key).sort((a,b)=>a.timestamp-b.timestamp)[0];
-    if(!oldest)throw new Error('No hay un mensaje de referencia');
-    await connector.socket.fetchMessageHistory(50,oldest.key,Math.floor(oldest.timestamp/1000));
+    if(connector.status!=='connected')throw new Error('Conecta WhatsApp primero.');
+    // WhatsApp only sends older messages counted back from one we already have (any of the contact's addresses).
+    const target=connector.history.canonical(input.jid),oldest=store.list('owner','messages',-1).filter(m=>m.key?.id&&connector.history.canonical(m.jid)===target).sort((a,b)=>a.timestamp-b.timestamp)[0];
+    if(!oldest)throw new Error('Este chat no tiene mensajes guardados, y WhatsApp solo entrega los anteriores a partir de uno que ya tengamos. Aparecerán cuando el contacto te escriba o le escribas.');
+    try{await connector.socket.fetchMessageHistory(50,{remoteJid:oldest.key.remoteJid||oldest.jid,fromMe:!!oldest.key.fromMe,id:oldest.key.id},Math.floor(oldest.timestamp/1000));}catch{throw new Error('WhatsApp no aceptó la petición. Inténtalo de nuevo en unos minutos.');}
    }
    else if(path==='/api/chat/delete'){
     if(!direct(input.jid))throw new Error('Chat inválido');
     const chat=connector.history.chat(input.jid);chat.enabled=false;chat.deleted=true;chat.classification='old';chat.name='Contacto eliminado';delete chat.earliest;delete chat.latest;connector.history.save(chat);
     for(const m of store.list('owner','messages',-1))if(connector.history.canonical(m.jid)===chat.jid){store.remove('owner','messages',m.id);store.remove('owner','media',m.id);const file=mediaCache.get(m.id);if(file){cached-=file.data.length;mediaCache.delete(m.id);}}
-    store.remove('owner','avatars',chat.jid);delete chat.photo;connector.history.save(chat);
+    store.remove('owner','avatars',chat.jid);profiles.delete('photo:'+chat.jid);profiles.delete('about:'+chat.jid);delete chat.photo;connector.history.save(chat);
     for(const j of store.list('owner','queue',-1))if(connector.history.canonical(j.jid)===chat.jid)store.remove('owner','queue',j.id);
    }else return json(404,{error:'Ruta no encontrada.'});
    return json(200,{ok:true});
-  }catch(error){return json(400,{error:['/api/disconnect','/api/bot/config','/api/chat/review','/api/bot/preview','/api/chat/send','/api/chat/react','/api/push/subscribe'].includes(path)?error.message:'No se pudo completar la acción.'});}
+  }catch(error){return json(400,{error:['/api/disconnect','/api/bot/config','/api/chat/review','/api/bot/preview','/api/chat/send','/api/chat/react','/api/push/subscribe','/api/history/more'].includes(path)?error.message:'No se pudo completar la acción.'});}
  });
  server.requestTimeout=15000;server.headersTimeout=10000;
  let closed=false,monitor,watch,avatarTimer,lastStatus,lastSignal;

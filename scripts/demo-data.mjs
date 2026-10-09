@@ -44,7 +44,9 @@ export function seedDemo({store,history:h,bot,now=Date.now(),media={}}){
  const add=(jid,name,items)=>{for(const [i,[ago,text,opts]] of items.entries())h.ingest(demoRaw(jid,'seed-'+jid.split('@')[0]+'-'+i,now-ago,text,name,opts),opts?.live?'live':'history');};
  const botReply=(jid,ago,text)=>{const ts=now-ago,id='BOT'+ts;store.put('owner','messages',`${jid}:${id}`,{id:`${jid}:${id}`,key:{remoteJid:jid,id,fromMe:true},jid,name:'Conversa',text,kind:'text',timestamp:ts,fromMe:true,bot:true});const chat=h.chat(jid);Object.assign(chat,{enabled:false,handoffAt:ts,handoffReason:'greeting',latest:ts,last:{text,kind:'text',fromMe:true,bot:true,timestamp:ts}});h.save(chat);};
  // Before the cutoff: always excluded.
- add('34600000101@s.whatsapp.net','Marcos Ruiz',[[6*demoDay,'¿Me guardas dos barras para el sábado?'],[6*demoDay-20*demoMinute,'Claro, quedan apartadas.',{fromMe:true}],[50*demoMinute,'¿Tenéis pan sin gluten esta semana?']]);
+ add('34600000101@s.whatsapp.net','Marcos Ruiz',[[6*demoDay,'¿Me guardas dos barras para el sábado?'],[6*demoDay-20*demoMinute,'Claro, quedan apartadas.',{fromMe:true}],[5*demoDay,'Aquí tienes la carta con precios: https://ejemplo.com/carta',{fromMe:true}],[5*demoDay-3*demoMinute,'Perdona, era para otro chat'],[50*demoMinute,'¿Tenéis pan sin gluten esta semana?']]);
+ // Marcos deleted one of his messages for everyone.
+ h.ingest({key:{remoteJid:'34600000101@s.whatsapp.net',id:'seed-marcos-revoke',fromMe:false},messageTimestamp:Math.floor((now-5*demoDay+4*demoMinute)/1000),message:{protocolMessage:{type:0,key:{remoteJid:'34600000101@s.whatsapp.net',id:'seed-34600000101-3',fromMe:true}}}},'history');
  // Elena: a photo with its preview, the owner's reply (she reacts ❤️ to it) and a voice note, all openable in the preview.
  const elena='34600000102@s.whatsapp.net',file=(name,extra)=>({mediaKey:'ZGVtbw==',directPath:'/v/demo/'+name,...extra});
  add(elena,'Elena Castro',[[9*demoDay,'',{message:{imageMessage:file('photo',{caption:'Así quedó la tarta, ¡gracias! 🎂',mimetype:'image/jpeg',width:640,height:480,fileLength:14117,jpegThumbnail:media.thumb})}}],[9*demoDay-5*demoMinute,'¡Qué bonita! Gracias a ti, Elena 😊',{fromMe:true}],[2*demoDay,'',{message:{audioMessage:file('voice',{mimetype:'audio/wav',seconds:6,ptt:true,fileLength:48044})}}]]);
@@ -56,7 +58,7 @@ export function seedDemo({store,history:h,bot,now=Date.now(),media={}}){
  add(DEMO_DIEGO,'Diego Martín',[[demoDay,'Buenas tardes, ¿hacéis envíos a domicilio?'],[demoDay-30*demoMinute,'Hola Diego, por ahora solo recogida en tienda.',{fromMe:true}],[demoDay-40*demoMinute,'',{message:{extendedTextMessage:{text:'Perfecto, paso el sábado entonces 👌',contextInfo:{stanzaId:'seed-34600000104-1',participant:DEMO_OWNER+'@s.whatsapp.net',quotedMessage:{conversation:'Hola Diego, por ahora solo recogida en tienda.'}}}}}]]);
  h.review(DEMO_DIEGO,true);
  // New chat the owner has not verified yet.
- add(DEMO_CARMEN,'Carmen López',[[3*60*demoMinute,'Hola, quiero hacer un encargo para el viernes']]);
+ add(DEMO_CARMEN,'Carmen López',[[4*60*demoMinute,'',{message:{locationMessage:{degreesLatitude:40.4168,degreesLongitude:-3.7038,name:'Puerta del Sol',address:'Plaza de la Puerta del Sol, Madrid'}}}],[3*60*demoMinute,'Hola, quiero hacer un encargo para el viernes']]);
  // View-once content: never opened, the chat goes to review.
  add('34600000106@s.whatsapp.net','Sofía Navarro',[[2*demoDay,'Hola'],[90*demoMinute,'',{live:true,message:{viewOnceMessageV2:{message:{imageMessage:{}}}}}]]);
  // The contact opted out with STOP.
