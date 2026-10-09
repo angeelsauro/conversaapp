@@ -44,7 +44,7 @@ export class Bot {
   const record={id:`${chat.jid}:${id}`,key:{remoteJid:chat.jid,id,fromMe:true},jid:chat.jid,name:'Tú',text,kind:'text',timestamp,fromMe:true,manual:true,source:'live',status:'sending',...(quote?{quote}:{})};
   this.store.transaction(()=>{this.store.put(this.w,'messages',record.id,record);this.store.put(this.w,'seen',id,{first:record.id});Object.assign(chat,{enabled:false,humanAt:timestamp,unread:0,last:preview(record),latest:Math.max(chat.latest||0,timestamp)});this.c.history.save(chat);});
   // The quote travels as text: WhatsApp shows it above the reply and links it to the original by its id.
-  const options=quoted?{messageId:id,quoted:{key:quoted.key,message:{conversation:quoted.text||QUOTE_LABELS[quoted.kind]||'Mensaje'}}}:{messageId:id};
+  const options=quoted?{messageId:id,quoted:{key:{remoteJid:quoted.key.remoteJid,fromMe:!!quoted.key.fromMe,id:quoted.key.id},message:{conversation:quoted.text||QUOTE_LABELS[quoted.kind]||'Mensaje'}}}:{messageId:id};
   let timer,state;try{const sent=await Promise.race([this.c.socket.sendMessage(chat.jid,{text},options),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),10000);})]);state=sent?'sent':'uncertain';}catch{state='uncertain';}finally{clearTimeout(timer);}
   this.markSent(record.id,state);return {id:record.id,status:state};
  }
@@ -52,7 +52,7 @@ export class Bot {
   const m=this.store.get(this.w,'messages',messageId);if(!m?.key||m.viewOnce)throw new Error('Mensaje no encontrado.');
   if(this.c.history.chat(m.jid).deleted)throw new Error('Este chat fue borrado.');
   if(this.c.status!=='connected'||!this.c.socket)throw new Error('Conecta WhatsApp primero.');
-  let timer;try{await Promise.race([this.c.socket.sendMessage(m.key.remoteJid||m.jid,{react:{text:emoji,key:m.key}}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),10000);})]);}catch{throw new Error('WhatsApp no confirmó la reacción. Inténtalo de nuevo.');}finally{clearTimeout(timer);}
+  let timer;try{await Promise.race([this.c.socket.sendMessage(m.key.remoteJid||m.jid,{react:{text:emoji,key:{remoteJid:m.key.remoteJid||m.jid,fromMe:!!m.key.fromMe,id:m.key.id}}}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),10000);})]);}catch{throw new Error('WhatsApp no confirmó la reacción. Inténtalo de nuevo.');}finally{clearTimeout(timer);}
   const fresh=this.store.get(this.w,'messages',messageId)||m;fresh.reactions={...fresh.reactions};if(emoji)fresh.reactions.me=emoji;else delete fresh.reactions.me;this.store.put(this.w,'messages',messageId,fresh);this.touch(fresh.jid);return {reactions:fresh.reactions};
  }
  markSent(messageId,state){const m=this.store.get(this.w,'messages',messageId);if(m){m.status=state==='sent'?'sent':'uncertain';this.store.put(this.w,'messages',messageId,m);this.touch(m.jid);}}

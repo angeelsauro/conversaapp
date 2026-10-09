@@ -3,7 +3,12 @@ const MEDIA=[['imageMessage','image'],['videoMessage','video'],['audioMessage','
 const b64=v=>v instanceof Uint8Array?Buffer.from(v).toString('base64'):v?.type==='Buffer'&&Array.isArray(v.data)?Buffer.from(v.data).toString('base64'):typeof v==='string'?v:'';
 const num=v=>typeof v==='number'?v:v&&typeof v.low==='number'?(v.high>>>0)*4294967296+(v.low>>>0):Number(v)||0;
 // Ephemeral and document-with-caption containers are opened; view-once content is flagged and never unwrapped.
-function unwrap(message){let content=message,viewOnce=false;for(let i=0;i<4;i++){if(content?.viewOnceMessage||content?.viewOnceMessageV2||content?.viewOnceMessageV2Extension||content?.imageMessage?.viewOnce||content?.videoMessage?.viewOnce||content?.audioMessage?.viewOnce){viewOnce=true;break;}const inner=content?.ephemeralMessage?.message||content?.documentWithCaptionMessage?.message;if(!inner)break;content=inner;}return {content,viewOnce};}
+const isViewOnce=c=>!!(c?.viewOnceMessage||c?.viewOnceMessageV2||c?.viewOnceMessageV2Extension||c?.imageMessage?.viewOnce||c?.videoMessage?.viewOnce||c?.audioMessage?.viewOnce);
+function unwrap(message){let content=message;for(let i=0;i<4;i++){if(isViewOnce(content))return {content,viewOnce:true};const inner=content?.ephemeralMessage?.message||content?.documentWithCaptionMessage?.message;if(!inner)break;content=inner;}
+ // Deeper nesting than WhatsApp ever sends is treated as unreadable, never as ordinary content.
+ if(isViewOnce(content))return {content,viewOnce:true};if(content?.ephemeralMessage||content?.documentWithCaptionMessage)return {content:null,viewOnce:false};return {content,viewOnce:false};}
+// WhatsApp media paths (/v/t62.7118-24/…enc?…). Anything else could point the server at another host: never downloaded.
+export const safeMediaPath=p=>typeof p==='string'&&p.length<=1000&&/^\/v\/[\w./-]+(\?[\w=&%.-]*)?$/.test(p)&&!p.includes('..');
 const mediaOf=content=>{const [type,kind]=MEDIA.find(([t])=>content?.[t])||[];return type?{type,kind,media:content[type]}:{};};
 export function messageRecord(raw) {
   const jid=raw.key?.remoteJid, timestamp=Number(raw.messageTimestamp)*1000;
@@ -15,7 +20,7 @@ export function messageRecord(raw) {
   const kind=viewOnce?'view_once':mediaKind||(text?'text':'other');
   const record={id:`${jid}:${raw.key.id}`,key:raw.key,jid,name:(raw.pushName||'Contacto').slice(0,100),text:String(text).slice(0,8000),kind,viewOnce,timestamp,fromMe:!!raw.key.fromMe};
   // Media metadata and WhatsApp's inline preview only; the file itself is fetched on demand and never stored.
-  if(media){record.media={mimetype:String(media.mimetype||'').slice(0,100),size:num(media.fileLength),seconds:num(media.seconds)||undefined,ptt:!!media.ptt||undefined,name:media.fileName?String(media.fileName).slice(0,200):undefined,width:num(media.width)||undefined,height:num(media.height)||undefined};const thumb=b64(media.jpegThumbnail);if(thumb&&thumb.length<=16000)record.media.thumb=thumb;}
+  if(media){record.media={mimetype:String(media.mimetype||'').slice(0,100),size:num(media.fileLength),seconds:num(media.seconds)||undefined,ptt:!!media.ptt||undefined,name:media.fileName?String(media.fileName).slice(0,200).toWellFormed():undefined,width:num(media.width)||undefined,height:num(media.height)||undefined};const thumb=b64(media.jpegThumbnail);if(thumb&&thumb.length<=16000)record.media.thumb=thumb;}
   const ctx=(content.extendedTextMessage||media)?.contextInfo;
   if(ctx?.stanzaId&&ctx.quotedMessage){const q=unwrap(ctx.quotedMessage),qm=q.viewOnce?{}:mediaOf(q.content);record.quote={id:String(ctx.stanzaId).slice(0,128),text:q.viewOnce?'':String(q.content?.conversation||q.content?.extendedTextMessage?.text||qm.media?.caption||'').slice(0,300),kind:q.viewOnce?'view_once':qm.kind||'text',participant:typeof ctx.participant==='string'?ctx.participant:undefined};}
   return record;
@@ -23,8 +28,8 @@ export function messageRecord(raw) {
 // What WhatsApp needs to download a file again later (keys, path, size). Never for view-once content.
 export function mediaSource(raw) {
   const {content,viewOnce}=unwrap(raw.message);if(viewOnce)return null;
-  const {type,media:m}=mediaOf(content);if(!m?.mediaKey||!(m.directPath||m.url))return null;
-  return {key:{remoteJid:raw.key.remoteJid,id:raw.key.id,fromMe:!!raw.key.fromMe},type,message:{url:m.url||undefined,directPath:m.directPath||undefined,mediaKey:b64(m.mediaKey),fileEncSha256:b64(m.fileEncSha256)||undefined,fileSha256:b64(m.fileSha256)||undefined,fileLength:num(m.fileLength),mimetype:m.mimetype||undefined,mediaKeyTimestamp:num(m.mediaKeyTimestamp)||undefined}};
+  const {type,media:m}=mediaOf(content);if(!m?.mediaKey||!safeMediaPath(m.directPath))return null;
+  return {key:{remoteJid:raw.key.remoteJid,id:raw.key.id,fromMe:!!raw.key.fromMe},type,message:{directPath:m.directPath,mediaKey:b64(m.mediaKey),fileEncSha256:b64(m.fileEncSha256)||undefined,fileSha256:b64(m.fileSha256)||undefined,fileLength:num(m.fileLength),mimetype:m.mimetype||undefined,mediaKeyTimestamp:num(m.mediaKeyTimestamp)||undefined}};
 }
 
 export const preview = m => ({text:(m.text||'').slice(0,200),kind:m.kind,fromMe:!!m.fromMe,bot:!!m.bot,timestamp:m.timestamp});
@@ -94,8 +99,10 @@ export class History {
   }
   // A reaction updates the message it points to (one per side, like WhatsApp); an empty reaction removes it.
   react(raw,r,source) {
-    const id=r.key?.id;if(!id)return;const seen=this.store.get(this.w,'seen',id);
-    const target=(seen&&this.store.get(this.w,'messages',seen.first))||this.store.get(this.w,'messages',`${this.canonical(r.key.remoteJid||raw.key?.remoteJid)}:${id}`);if(!target)return;
+    const id=r.key?.id;if(!id||!direct(raw.key?.remoteJid))return;const seen=this.store.get(this.w,'seen',id);
+    const target=(seen&&this.store.get(this.w,'messages',seen.first))||this.store.get(this.w,'messages',`${this.canonical(raw.key.remoteJid)}:${id}`);
+    // Only the chat a message belongs to can react to it (not a group, a status or another contact reusing an id).
+    if(!target||this.canonical(target.jid)!==this.canonical(raw.key.remoteJid))return;
     const who=raw.key?.fromMe?'me':'contact',emoji=String(r.text||'').slice(0,16);
     target.reactions={...target.reactions};if(emoji)target.reactions[who]=emoji;else delete target.reactions[who];
     this.store.put(this.w,'messages',target.id,target);

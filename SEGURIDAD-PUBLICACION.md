@@ -71,6 +71,7 @@ Alternativa sin Cloudflare: el `compose.yaml` original con Caddy y `CONVERSA_ALL
   - Lo único guardado (cifrado) son las claves para volver a pedirlos y la miniatura que ya trae el mensaje.
   - La visualización única nunca se guarda ni se descarga.
   - Los documentos y los tipos desconocidos se descargan como archivo y nunca se abren dentro del panel, para que un HTML o SVG malicioso no pueda ejecutarse.
+  - El servidor solo descarga de `mmg.whatsapp.net`, con una ruta validada, sin redirecciones, con tiempo y tamaño máximos, y comprobando la firma del archivo. Así, un mensaje manipulado no puede llevarlo a otra dirección ni revelar su IP real.
 - **Fotos de perfil:**
   - El servidor solo descarga direcciones `https` de `*.whatsapp.net`, imágenes de hasta 300 KB, de una en una.
   - Se guardan cifradas y se renuevan a diario.
@@ -78,6 +79,8 @@ Alternativa sin Cloudflare: el `compose.yaml` original con Caddy y `CONVERSA_ALL
   - El contenido va cifrado de extremo a extremo hasta tu dispositivo (RFC 8291). Google o Apple solo transportan bytes que no pueden leer.
   - Puedes ocultar el nombre y el texto con «Mostrar nombre y texto».
   - Solo se aceptan servicios push conocidos, para que nadie use el servidor como trampolín hacia otras direcciones.
+  - Cerrar sesión en un dispositivo deja de enviarle notificaciones. «Cerrar todas las sesiones» las corta en todos.
+  - El identificador de chat que ven Google o Apple es opaco: no permite deducir el número del contacto.
   - No se envían mientras el panel está en pantalla.
 - **Instalación como app:** el service worker solo muestra notificaciones. No guarda páginas ni datos, así que cada apertura pasa por Cloudflare Access y por tu sesión.
 - **Tiempo real (SSE):** necesita sesión, admite 8 flujos como máximo y se corta al cerrar o revocar la sesión.

@@ -1,7 +1,8 @@
-import makeWASocket, { initAuthCreds, BufferJSON, proto, DisconnectReason, makeCacheableSignalKeyStore, downloadMediaMessage } from '@whiskeysockets/baileys';
+import makeWASocket, { initAuthCreds, BufferJSON, proto, DisconnectReason, makeCacheableSignalKeyStore, getMediaKeys } from '@whiskeysockets/baileys';
+import {createHmac,createDecipheriv,timingSafeEqual} from 'node:crypto';
 import pino from 'pino';
 import QRCode from 'qrcode';
-import {History,messageRecord} from './history.mjs';
+import {History,messageRecord,safeMediaPath} from './history.mjs';
 const logger=pino({level:'silent'});
 export function authState(store,workspace,active=()=>true) {
  const read=id=>{if(!active())throw new Error('STALE_SESSION');const v=store.get(workspace,'auth',id);return v?JSON.parse(v,BufferJSON.reviver):null;};
@@ -77,9 +78,23 @@ export class Connector {
   }
  }
  pause(persist=true){if(persist)this.desired(false);++this.epoch;clearTimeout(this.retryTimer);clearTimeout(this.qrTimer);this.socket?.end(new Error('Paused'));Object.assign(this,{socket:null,qr:null,qrExpiresAt:null,status:'paused',note:'Recepción y respuestas pausadas.'});}
- // Files are downloaded from WhatsApp only when the owner opens them; the caller keeps them in memory, never on disk.
- async downloadMedia(source){const sock=this.socket;if(this.status!=='connected'||!sock)throw new Error('OFFLINE');const bytes=v=>v?Buffer.from(v,'base64'):undefined,m=source.message;
-  return downloadMediaMessage({key:source.key,message:{[source.type]:{...m,mediaKey:bytes(m.mediaKey),fileEncSha256:bytes(m.fileEncSha256),fileSha256:bytes(m.fileSha256)}}},'buffer',{},{logger,reuploadRequest:msg=>sock.updateMediaMessage(msg)});}
+ // Files are downloaded only when the owner opens them, and the caller keeps them in memory, never on disk.
+ // Our own fetch, not Baileys': fixed WhatsApp host, validated path, no redirects, a timeout and a size cap while reading,
+ // and the file's MAC checked before decrypting, so a crafted message cannot aim the server at another address.
+ async downloadMedia(source,{max=25*1048576,timeoutMs=30000,fetch=this.fetch||globalThis.fetch}={}){
+  const sock=this.socket;if(this.status!=='connected'||!sock)throw new Error('OFFLINE');
+  const m=source.message,mediaKey=Buffer.from(m.mediaKey||'','base64'),type=source.type.replace('Message','');
+  const get=async path=>{if(!safeMediaPath(path))throw new Error('BAD_PATH');const res=await fetch('https://mmg.whatsapp.net'+path,{redirect:'error',signal:AbortSignal.timeout(timeoutMs),headers:{Origin:'https://web.whatsapp.com'}});
+   if(!res.ok){const e=new Error('HTTP_'+res.status);e.status=res.status;throw e;}if(Number(res.headers.get('content-length')||0)>max+64)throw new Error('TOO_BIG');
+   const chunks=[];let size=0;for await(const chunk of res.body){size+=chunk.length;if(size>max+64)throw new Error('TOO_BIG');chunks.push(chunk);}return Buffer.concat(chunks);};
+  let encrypted;try{encrypted=await get(m.directPath);}
+  catch(e){if(![404,410].includes(e.status))throw e;
+   // Expired on WhatsApp's servers: ask the sender's phone to upload it again (Baileys fills in the new path).
+   const retry={key:source.key,message:{[source.type]:{directPath:m.directPath,mediaKey,mimetype:m.mimetype}}};await sock.updateMediaMessage(retry);encrypted=await get(retry.message[source.type].directPath);}
+  const {cipherKey,iv,macKey}=await getMediaKeys(mediaKey,type);if(encrypted.length<26)throw new Error('BAD_MEDIA');
+  const body=encrypted.subarray(0,-10),mac=createHmac('sha256',macKey).update(iv).update(body).digest().subarray(0,10);
+  if(!timingSafeEqual(mac,encrypted.subarray(-10)))throw new Error('BAD_MAC');
+  const decipher=createDecipheriv('aes-256-cbc',cipherKey,iv);return Buffer.concat([decipher.update(body),decipher.final()]);}
  async profilePicture(jid){if(this.status!=='connected'||!this.socket?.profilePictureUrl)throw new Error('OFFLINE');return this.socket.profilePictureUrl(jid,'preview',8000);}
  async disconnect(){const sock=this.socket;let timer;try{if(sock&&this.status==='connected')await Promise.race([sock.logout(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),8000);})]);else if(this.store.get(this.workspace,'auth','creds'))throw new Error('offline');}catch{throw new Error('No se pudo desvincular. Reanuda o elimina Conversa en Dispositivos vinculados del teléfono.');}finally{clearTimeout(timer);}this.pause();this.store.clear(this.workspace,'auth');this.identity=null;this.status='disconnected';this.note='Sesión desvinculada; se conserva la exclusión de chats antiguos.';}
 }

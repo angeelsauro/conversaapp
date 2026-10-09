@@ -34,13 +34,16 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  for(const name of ['put','remove','clear']){const original=store[name].bind(store);store[name]=(w,b,...rest)=>{const result=original(w,b,...rest);if(['messages','chats','settings','queue'].includes(b))changed();return result;};}
  const ownerWatching=()=>{const now=Date.now();for(const [k,t] of visible)if(now-t>75000)visible.delete(k);return visible.size>0;};
  // Push: only while no panel is on screen, at most one per chat every 3 s. The payload is end-to-end encrypted to the device.
- const lastPush=new Map(),pushSubject=publicOrigin?.startsWith('https://')?publicOrigin:undefined;
+ // Topic and tag travel to Google/Apple: keyed HMAC of the chat, never something a phone number can be guessed from.
+ const lastPush=new Map(),pushSubject=publicOrigin?.startsWith('https://')?publicOrigin:undefined,topicOf=jid=>store.index('owner','push-topic',jid).slice(0,32);
  async function notify(msg,chat){const subs=store.list('owner','push',-1);if(!subs.length||ownerWatching())return;const now=Date.now();if(now-(lastPush.get(chat.jid)||0)<3000)return;lastPush.set(chat.jid,now);
-  const hidden=store.get('owner','settings','push')?.preview===false,payload=JSON.stringify({title:hidden?'Conversa':chat.name,body:hidden?'Tienes un mensaje nuevo':msg.text?msg.text.slice(0,140):LABELS[msg.kind]||'Mensaje nuevo',tag:hash(chat.jid).slice(0,16),jid:chat.jid});
-  const keys=vapidKeys(store);for(const sub of subs){const r=await pushSender(sub,payload,keys,{topic:hash(chat.jid).slice(0,32),subject:pushSubject}).catch(()=>({}));if(r.gone)store.remove('owner','push',sub.id);}}
+  const hidden=store.get('owner','settings','push')?.preview===false,payload=JSON.stringify({title:hidden?'Conversa':chat.name,body:hidden?'Tienes un mensaje nuevo':msg.text?msg.text.slice(0,140).toWellFormed():LABELS[msg.kind]||'Mensaje nuevo',tag:topicOf(chat.jid).slice(0,16),jid:chat.jid});
+  const keys=vapidKeys(store);for(const sub of subs){const r=await pushSender(sub,payload,keys,{topic:topicOf(chat.jid),subject:pushSubject}).catch(()=>({}));if(r.gone)store.remove('owner','push',sub.id);}}
  if(connector.history)connector.history.onIncoming=(msg,chat)=>{notify(msg,chat).catch(()=>{});};
  // Opened files live in memory only (LRU, 80 MB); the same file requested twice downloads once.
- const mediaCache=new Map(),downloads=new Map();let cached=0;
+ const mediaCache=new Map(),downloads=new Map(),waiting=[];let cached=0,active=0;
+ // At most 3 downloads from WhatsApp at a time (20 waiting); the rest get 503 and the panel keeps the preview.
+ const slot=()=>active<3?(active++,Promise.resolve()):waiting.length>=20?null:new Promise(r=>waiting.push(r)),release=()=>{const next=waiting.shift();if(next)next();else active--;};
  const remember=(id,file)=>{mediaCache.set(id,file);cached+=file.data.length;for(const [k,f] of mediaCache){if(cached<=80*1048576)break;mediaCache.delete(k);cached-=f.data.length;}};
  // Profile photos: one small preview per chat, most recent chats first, refreshed daily; never more than one request at a time.
  const avatars={busy:false,pausedUntil:0};
@@ -49,8 +52,9 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
   try{const now=Date.now(),next=store.list('owner','chats',400).filter(c=>!c.deleted&&direct(c.jid)).sort((a,b)=>(b.last?.timestamp||b.latest||0)-(a.last?.timestamp||a.latest||0)).find(c=>{const a=store.get('owner','avatars',c.jid);return !a||now-a.at>(a.data?86400000:3*86400000);});if(!next)return;
    let link=null;try{link=await connector.profilePicture(next.jid);}catch(e){if(e?.output?.statusCode===429||e?.data===429||/rate/i.test(e?.message||'')){avatars.pausedUntil=Date.now()+600000;return;}}
    let data=null,type=null;try{const u=link&&new URL(link);if(u&&u.protocol==='https:'&&/(^|\.)whatsapp\.net$/.test(u.hostname)){const r=await avatarFetch(u.href,{signal:AbortSignal.timeout(8000),redirect:'error'}),t=(r.headers.get('content-type')||'').split(';')[0].trim();if(r.ok&&/^image\/(jpeg|png|webp)$/.test(t)&&Number(r.headers.get('content-length')||0)<=300000){const buf=Buffer.from(await r.arrayBuffer());if(buf.length<=300000){data=buf.toString('base64');type=t;}}}}catch{}
+   const chat=connector.history.chat(next.jid);if(chat.deleted)return;// deleted while we waited for WhatsApp
    store.put('owner','avatars',next.jid,{at:Date.now(),type,data});
-   const chat=connector.history.chat(next.jid);if(data)chat.photo=Date.now();else delete chat.photo;if(data||next.photo)connector.history.save(chat);
+   if(data)chat.photo=Date.now();else delete chat.photo;if(data||next.photo)connector.history.save(chat);
   }finally{avatars.busy=false;}
  }
  const lite=m=>m.media?.thumb?{...m,media:{...m.media,thumb:undefined}}:m;
@@ -99,16 +103,16 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
      else{
       if((source.message.fileLength||0)>MEDIA_MAX)return json(413,{error:'Archivo demasiado grande: ábrelo en WhatsApp.'});
       if(connector.status!=='connected'||typeof connector.downloadMedia!=='function')return json(409,{error:'Conecta WhatsApp para abrir archivos.'});
-      try{let pending=downloads.get(id);if(!pending){pending=connector.downloadMedia(source);downloads.set(id,pending);pending.finally(()=>downloads.delete(id)).catch(()=>{});}
+      try{let pending=downloads.get(id);if(!pending){const turn=slot();if(!turn)return json(503,{error:'Demasiadas descargas a la vez. Inténtalo en un momento.'});pending=turn.then(()=>connector.downloadMedia(source,{max:MEDIA_MAX})).finally(release);downloads.set(id,pending);pending.finally(()=>downloads.delete(id)).catch(()=>{});}
        const data=Buffer.from(await pending);if(data.length>MEDIA_MAX)return json(413,{error:'Archivo demasiado grande: ábrelo en WhatsApp.'});
-       const base=String(source.message.mimetype||'').split(';')[0].trim().toLowerCase();file={data,type:INLINE.test(base)?base:'application/octet-stream',name:String(m.media?.name||'archivo').replace(/[\u0000-\u001f"\\]/g,'').slice(0,150)||'archivo'};if(!mediaCache.has(id))remember(id,file);}
+       const base=String(source.message.mimetype||'').split(';')[0].trim().toLowerCase();file={data,type:INLINE.test(base)?base:'application/octet-stream',name:String(m.media?.name||'archivo').replace(/[\u0000-\u001f"\\]/g,'').slice(0,150).toWellFormed()||'archivo'};if(!mediaCache.has(id))remember(id,file);}
       catch{return json(502,{error:'WhatsApp no entregó el archivo. Ábrelo en el teléfono.'});}
      }
      // Byte ranges: Safari only plays audio and video from servers that support them.
      const size=file.data.length,range=/^bytes=(\d*)-(\d*)$/.exec(req.headers.range||'');let start=0,end=size-1;
      if(range&&(range[1]||range[2])){if(range[1]){start=Number(range[1]);end=range[2]?Math.min(Number(range[2]),size-1):size-1;}else start=Math.max(0,size-Number(range[2]));if(start>end||start>=size){res.writeHead(416,{'Content-Range':`bytes */${size}`});return res.end();}}
      const partial=end-start+1<size;
-     res.writeHead(partial?206:200,{'Content-Type':file.type,'Content-Length':end-start+1,'Accept-Ranges':'bytes','Cache-Control':'private, max-age=1800','Content-Disposition':file.type==='application/octet-stream'?`attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`:'inline',...(partial?{'Content-Range':`bytes ${start}-${end}/${size}`}:{})});
+     res.writeHead(partial?206:200,{'Content-Type':file.type,'Content-Length':end-start+1,'Accept-Ranges':'bytes','Cache-Control':'private, no-store','Content-Disposition':file.type==='application/octet-stream'?`attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`:'inline',...(partial?{'Content-Range':`bytes ${start}-${end}/${size}`}:{})});
      return res.end(file.data.subarray(start,end+1));
     }
     if(path==='/api/avatar'){
@@ -134,10 +138,11 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     res.setHeader('Set-Cookie',cookie(id,43200));return json(200,{ok:true});
    }
    if(!authenticated)return json(401,{error:'Tu sesión terminó. Vuelve a entrar.'});
-   if(path==='/api/logout'){store.remove('owner','sessions',hash(sid));for(const k of visible.keys())if(k.startsWith(hash(sid)+':'))visible.delete(k);for(const s of streams)if(s.sid===hash(sid))s.res.end();res.setHeader('Set-Cookie',cookie('',0));}
-   else if(path==='/api/revoke-sessions'){store.clear('owner','sessions');visible.clear();for(const s of streams)s.res.end();res.setHeader('Set-Cookie',cookie('',0));}
+   // Logging out (or revoking every session) also stops that device's notifications and clears what the browser cached.
+   if(path==='/api/logout'){store.remove('owner','sessions',hash(sid));for(const k of visible.keys())if(k.startsWith(hash(sid)+':'))visible.delete(k);for(const s of streams)if(s.sid===hash(sid))s.res.end();for(const sub of store.list('owner','push',-1))if(sub.session===hash(sid))store.remove('owner','push',sub.id);res.setHeader('Set-Cookie',cookie('',0));res.setHeader('Clear-Site-Data','"cache"');}
+   else if(path==='/api/revoke-sessions'){store.clear('owner','sessions');store.clear('owner','push');visible.clear();for(const s of streams)s.res.end();res.setHeader('Set-Cookie',cookie('',0));res.setHeader('Clear-Site-Data','"cache"');}
    else if(path==='/api/presence'){const tab=typeof input.tab==='string'&&/^[a-z0-9-]{1,64}$/i.test(input.tab)?input.tab:'',key=hash(sid)+':'+tab;if(input.visible===true)visible.set(key,Date.now());else visible.delete(key);}
-   else if(path==='/api/push/subscribe'){const sub=validSubscription(input.subscription),id=hash(sub.endpoint);store.put('owner','push',id,{...sub,id,createdAt:Date.now()});store.trim('owner','push',10);}
+   else if(path==='/api/push/subscribe'){const sub=validSubscription(input.subscription),id=hash(sub.endpoint);store.put('owner','push',id,{...sub,id,session:hash(sid),createdAt:Date.now()});store.trim('owner','push',10);}
    else if(path==='/api/push/unsubscribe'){if(typeof input.endpoint==='string')store.remove('owner','push',hash(input.endpoint));}
    else if(path==='/api/push/settings'){if(typeof input.preview!=='boolean')throw new Error('Ajuste inválido');store.put('owner','settings','push',{preview:input.preview});}
    else if(path==='/api/push/test'){const keys=vapidKeys(store),subs=store.list('owner','push',-1);let sent=0;for(const sub of subs){const r=await pushSender(sub,JSON.stringify({title:'Conversa',body:'Las notificaciones funcionan en este dispositivo.',tag:'conversa-test'}),keys,{subject:pushSubject}).catch(()=>({}));if(r.ok)sent++;if(r.gone)store.remove('owner','push',sub.id);}return json(200,{sent,devices:subs.length});}
@@ -162,7 +167,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    else if(path==='/api/chat/delete'){
     if(!direct(input.jid))throw new Error('Chat inválido');
     const chat=connector.history.chat(input.jid);chat.enabled=false;chat.deleted=true;chat.classification='old';chat.name='Contacto eliminado';delete chat.earliest;delete chat.latest;connector.history.save(chat);
-    for(const m of store.list('owner','messages',-1))if(connector.history.canonical(m.jid)===chat.jid){store.remove('owner','messages',m.id);store.remove('owner','media',m.id);mediaCache.delete(m.id);}
+    for(const m of store.list('owner','messages',-1))if(connector.history.canonical(m.jid)===chat.jid){store.remove('owner','messages',m.id);store.remove('owner','media',m.id);const file=mediaCache.get(m.id);if(file){cached-=file.data.length;mediaCache.delete(m.id);}}
     store.remove('owner','avatars',chat.jid);delete chat.photo;connector.history.save(chat);
     for(const j of store.list('owner','queue',-1))if(connector.history.canonical(j.jid)===chat.jid)store.remove('owner','queue',j.id);
    }else return json(404,{error:'Ruta no encontrada.'});

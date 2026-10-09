@@ -46,7 +46,7 @@ export function seedDemo({store,history:h,bot,now=Date.now(),media={}}){
  // Before the cutoff: always excluded.
  add('34600000101@s.whatsapp.net','Marcos Ruiz',[[6*demoDay,'¿Me guardas dos barras para el sábado?'],[6*demoDay-20*demoMinute,'Claro, quedan apartadas.',{fromMe:true}],[50*demoMinute,'¿Tenéis pan sin gluten esta semana?']]);
  // Elena: a photo with its preview, the owner's reply (she reacts ❤️ to it) and a voice note, all openable in the preview.
- const elena='34600000102@s.whatsapp.net',file=(name,extra)=>({mediaKey:'ZGVtbw==',directPath:'/demo/'+name,...extra});
+ const elena='34600000102@s.whatsapp.net',file=(name,extra)=>({mediaKey:'ZGVtbw==',directPath:'/v/demo/'+name,...extra});
  add(elena,'Elena Castro',[[9*demoDay,'',{message:{imageMessage:file('photo',{caption:'Así quedó la tarta, ¡gracias! 🎂',mimetype:'image/jpeg',width:640,height:480,fileLength:14117,jpegThumbnail:media.thumb})}}],[9*demoDay-5*demoMinute,'¡Qué bonita! Gracias a ti, Elena 😊',{fromMe:true}],[2*demoDay,'',{message:{audioMessage:file('voice',{mimetype:'audio/wav',seconds:6,ptt:true,fileLength:48044})}}]]);
  h.ingest({key:{remoteJid:elena,id:'seed-elena-react',fromMe:false},messageTimestamp:Math.floor((now-9*demoDay+6*demoMinute)/1000),message:{reactionMessage:{key:{remoteJid:elena,id:'seed-34600000102-1',fromMe:true},text:'❤️'}}},'history');
  // New chat reviewed by the owner: the bot answered once and handed it over.

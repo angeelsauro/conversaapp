@@ -172,7 +172,8 @@ Objetivo: que el panel se sienta como una app de mensajería moderna (tiempo rea
 
 ### Verificación de esta versión
 
-- `npm test`: 48 pruebas aprobadas, 0 fallidas.
+- `npm test`: 53 pruebas aprobadas, 0 fallidas.
+  - 5 en test/media-security.test.mjs (ver «Revisión de 0.4.0»).
   - 5 en test/push.test.mjs: incluye el vector de RFC 8291, que coincide byte a byte.
   - 9 en test/wow.test.mjs: pie, miniatura y origen del archivo; nada de visualización única; citas y reacciones; SSE más allá del tiempo de petición; rangos de bytes, caché y descargas como adjunto; fotos de perfil solo de WhatsApp; push con presencia, modo privado y suscripciones caducadas; reacción y respuesta citada; archivos PWA.
 - Navegador real (Chromium/Playwright): 51 comprobaciones contra `npm run preview` y 52 contra `dist/conversa-demo.html`. Incluyen foto que carga sobre su miniatura, nota de voz que suena, visor, reacción enviada y mostrada, respuesta con cita, emoji, SSE conectado, tema oscuro manual y automático, herramientas por toque en móvil, sin desplazamiento horizontal y sin errores de JavaScript.
@@ -181,3 +182,25 @@ Objetivo: que el panel se sienta como una app de mensajería moderna (tiempo rea
   - notificación en Android y en iPhone (icono instalado);
   - abrir una foto y un audio reales;
   - comprobar que una nota de voz de WhatsApp (Ogg/Opus) suena en iPhone; si Safari no la reproduce, el panel ofrece descargarla.
+
+### Revisión de 0.4.0 (auditoría independiente)
+
+Un revisor independiente auditó el cambio completo. Encontró 1 problema alto, 2 medios y 8 bajos. Todos están corregidos:
+
+- **Alto, SSRF por archivos:** un mensaje con un archivo manipulado (`url` o `directPath` a otra dirección) hacía que Baileys lo descargara al abrir el chat. Seguía redirecciones, no tenía tiempo máximo y guardaba todo en memoria. Eso permitía revelar la IP real del servidor, hacer peticiones internas o agotar la memoria. Corrección:
+  - la descarga la hace Conversa: solo `https://mmg.whatsapp.net` más un `directPath` validado, también tras la resubida;
+  - sin redirecciones, con 30 s y un tope de tamaño mientras se lee;
+  - verificación del HMAC antes de descifrar;
+  - como máximo 3 descargas a la vez.
+- **Medio:** las suscripciones push sobrevivían al cierre de sesión. Ahora quedan ligadas a la sesión; cerrar sesión o revocarlas las borra, junto con `Clear-Site-Data`.
+- **Medio, privacidad:** el `Topic` push era un SHA-256 del JID, reversible a número de teléfono. Ahora es un HMAC con clave del servidor.
+- **Bajos:**
+  - archivos en la caché del navegador: ahora `no-store`;
+  - contador de la caché de archivos al borrar un chat;
+  - nombres de archivo con emojis cortados que hacían fallar la descarga (`toWellFormed`);
+  - reacciones de otro chat que reutilizaban un id;
+  - visualización única a una profundidad de anidamiento mayor de la que WhatsApp envía;
+  - foto de perfil guardada en un chat recién borrado;
+  - en el panel: la velocidad del audio se perdía al redibujar, una reacción fallida deshacía otra posterior y un envío fallido perdía la cita;
+  - el aviso de presencia se envía con `keepalive`.
+- Las 5 pruebas de test/media-security.test.mjs fallan con el código anterior y pasan con el corregido. Tras las correcciones, el navegador pasa de nuevo 51 y 52 comprobaciones.

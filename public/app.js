@@ -5,13 +5,13 @@ const titles={connection:'Conecta tu WhatsApp',inbox:'Tus mensajes',bot:'Tu asis
 const date=t=>new Intl.DateTimeFormat('es',{dateStyle:'short',timeStyle:'short'}).format(new Date(t));
 function page(name){for(const section of document.querySelectorAll('.page'))section.hidden=section.id!==name;for(const button of document.querySelectorAll('.nav')){button.classList.toggle('active',button.dataset.page===name);if(button.dataset.page===name)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}$('page-title').textContent=titles[name];document.body.dataset.page=name;if(name==='connection')updatePushCard();syncChatFocus();window.scrollTo({top:0,behavior:'instant'});}
 document.addEventListener('click',e=>{const button=e.target.closest('[data-page]');if(button)page(button.dataset.page);});
-async function api(path,input={}){const res=await fetch('/api/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),signal:AbortSignal.timeout(35000)});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'No se pudo completar la acción ('+res.status+').');return data;}
+async function api(path,input={},{keepalive=false}={}){const res=await fetch('/api/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),keepalive,signal:AbortSignal.timeout(35000)});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'No se pudo completar la acción ('+res.status+').');return data;}
 function ask(text,ok='Confirmar',danger=false){return new Promise(resolve=>{const d=$('confirm-generic');$('confirm-text').textContent=text;$('confirm-ok').textContent=ok;$('confirm-ok').className=danger?'danger':'primary';d.onclose=()=>resolve(d.returnValue==='ok');d.returnValue='';d.showModal();});}
 $('confirm-cancel').onclick=()=>$('confirm-generic').close('cancel');$('confirm-ok').onclick=()=>$('confirm-generic').close('ok');
 function error(message){$('error').textContent=message;$('error').hidden=!message;}
 async function action(name,input={}){if(busy)return;busy=true;error('');try{const data=await api(name,input);await refresh();return data;}catch(e){error(e.message);}finally{busy=false;if(state&&online)render();}}
 $('connect').onclick=()=>action('connect');$('pause').onclick=()=>action('pause');$('disconnect').onclick=()=>$('confirm-disconnect').showModal();$('cancel-disconnect').onclick=()=>$('confirm-disconnect').close();$('confirm-action').onclick=()=>{$('confirm-disconnect').close();action('disconnect');};
-$('logout').onclick=async()=>{await action('logout');stopListening();state=null;botLoaded=false;lastUnreadTotal=null;$('messages').replaceChildren();$('chat-list').replaceChildren();$('qr-area').replaceChildren();lastVisual='';lastMessages='';lastChats='';resetInbox();};
+$('logout').onclick=async()=>{(await currentSubscription())?.unsubscribe().catch(()=>{});await action('logout');stopListening();state=null;botLoaded=false;lastUnreadTotal=null;$('messages').replaceChildren();$('chat-list').replaceChildren();$('qr-area').replaceChildren();lastVisual='';lastMessages='';lastChats='';resetInbox();};
 document.getElementById('login-form')?.addEventListener('submit',async e=>{e.preventDefault();try{await api('login',{token:$('access-token').value.trim()});$('access-token').value='';await refresh();}catch(err){error(err.message);}});
 function render(){
  const c=state.connection,badge=$('global-status');badge.textContent=labels[c.status]||'Sin conexión';badge.className='badge '+(c.status==='connected'?'good':['connecting','qr','reconnecting'].includes(c.status)?'pending':'neutral');
@@ -37,7 +37,8 @@ function listen(){if(events||!LIVE||!window.EventSource||!online)return;events=n
 function stopListening(){events?.close();events=null;eventsOpen=false;}
 // Tells the server whether a panel is on screen, so it does not also send a push for what you are already seeing.
 const TAB=Math.random().toString(36).slice(2,12);
-function presence(){if(LIVE&&online)api('presence',{visible:!document.hidden,tab:TAB}).catch(()=>{});}
+// keepalive: the «hidden» notice still leaves when a phone suspends the page right away.
+function presence(){if(LIVE&&online)api('presence',{visible:!document.hidden,tab:TAB},{keepalive:true}).catch(()=>{});}
 async function loginFromLink(){const params=new URLSearchParams(location.hash.slice(1)),token=params.get('access'),chat=params.get('chat');if(token||chat)history.replaceState(null,'',location.pathname);if(chat)pendingOpen=chat;if(token){try{await api('login',{token});}catch(e){error(e.message);}}await refresh();}
 async function init(){page('inbox');applyTheme(document.documentElement.dataset.themeChoice||'auto');await loginFromLink();window.addEventListener('hashchange',loginFromLink);setInterval(()=>{if(!document.hidden&&!busy&&(!eventsOpen||Date.now()-lastRefreshAt>30000))refresh();},3000);setInterval(()=>{if(!document.hidden)presence();},50000);document.addEventListener('visibilitychange',()=>{presence();if(!document.hidden)refresh();});setupApp();}
 
@@ -128,7 +129,7 @@ function voiceNode(m){const wrap=el('div','voice'),play=el('button','voice-play'
  play.type='button';play.setAttribute('aria-label','Reproducir mensaje de voz');play.append(icon('play'));speed.type='button';speed.setAttribute('aria-label','Velocidad de reproducción');link.href=mediaUrl(m.id);link.download='';
  wave.setAttribute('role','slider');wave.tabIndex=0;wave.setAttribute('aria-label','Posición del mensaje de voz');wave.setAttribute('aria-valuemin','0');wave.setAttribute('aria-valuemax','100');wave.setAttribute('aria-valuenow','0');
  let seed=[...m.id].reduce((v,c)=>(v*31+c.charCodeAt(0))>>>0,7);const bars=[];for(let i=0;i<30;i++){seed=(seed*1103515245+12345)>>>0;const bar=el('span');bar.style.height=(24+((seed>>>16)%76))+'%';bars.push(bar);wave.append(bar);}
- const a=players.get(m.id);if(a){a.view={wrap,play,wave,time,bars};a.sync();}
+ const a=players.get(m.id);if(a){a.view={wrap,play,wave,time,bars};a.sync();if(a.playbackRate!==1){speed.dataset.rate=a.playbackRate;speed.textContent=String(a.playbackRate).replace('.',',')+'×';}}
  const audio=()=>{const x=audioFor(m);x.view={wrap,play,wave,time,bars};return x;};
  const seek=ratio=>{const x=audio(),go=()=>{if(isFinite(x.duration))x.currentTime=Math.max(0,Math.min(1,ratio))*x.duration;x.sync();};if(isFinite(x.duration)&&x.duration)go();else{x.addEventListener('loadedmetadata',go,{once:true});x.load();}};
  play.onclick=e=>{e.stopPropagation();const x=audio();if(x.paused){for(const o of players.values())if(o!==x)o.pause();x.playbackRate=Number(speed.dataset.rate||1);x.play().catch(()=>{wrap.classList.add('voice-error');time.textContent='No se puede reproducir aquí';});}else x.pause();};
@@ -198,11 +199,14 @@ const current=m=>chatCache.messages.find(x=>x.id===m.id)||m;
 function openReactMenu(m,anchor){m=current(m);const menu=$('react-menu');menu.replaceChildren();reactAnchor=anchor;for(const e of REACTIONS){const mine=m.reactions?.me===e,b=el('button','react-option'+(mine?' selected':''),e);b.type='button';b.setAttribute('role','menuitem');b.setAttribute('aria-label',(mine?'Quitar reacción ':'Reaccionar con ')+e);b.onclick=ev=>{ev.stopPropagation();sendReaction(m,mine?'':e);};menu.append(b);}
  menu.hidden=false;const r=anchor.getBoundingClientRect(),w=menu.offsetWidth,h=menu.offsetHeight;menu.style.left=Math.max(8,Math.min(innerWidth-w-8,r.left+r.width/2-w/2))+'px';menu.style.top=(r.top-h-10<8?r.bottom+10:r.top-h-10)+'px';menu.firstChild.focus();}
 function closeReactMenu(){const menu=$('react-menu');if(menu.hidden)return;menu.hidden=true;reactAnchor?.focus?.();reactAnchor=null;}
-async function sendReaction(m,emoji){m=current(m);closeReactMenu();const before=m.reactions;m.reactions={...m.reactions};if(emoji)m.reactions.me=emoji;else delete m.reactions.me;inboxSignature='';drawConversation();
- try{await api('chat/react',{id:m.id,emoji});}catch(e){m.reactions=before;inboxSignature='';drawConversation();error(e.message);}}
+// Only the latest reaction on a message may roll back: an older failed request must not undo a newer choice.
+const reactionTurn=new Map();
+async function sendReaction(m,emoji){m=current(m);closeReactMenu();const turn=(reactionTurn.get(m.id)||0)+1;reactionTurn.set(m.id,turn);const before=m.reactions;m.reactions={...m.reactions};if(emoji)m.reactions.me=emoji;else delete m.reactions.me;inboxSignature='';drawConversation();
+ try{await api('chat/react',{id:m.id,emoji});}catch(e){if(reactionTurn.get(m.id)===turn){current(m).reactions=before;inboxSignature='';drawConversation();}error(e.message);}}
 $('conversation-scroll').addEventListener('scroll',()=>closeReactMenu(),{passive:true});
 // Reply quoting a message.
-function startReply(m,chat){replyTo={id:m.id,key:m.key?.id,text:m.text,kind:m.kind,fromMe:!!m.fromMe};$('reply-who').textContent=m.fromMe?'Tú':chat.name;$('reply-text').textContent=m.text||mediaLabel(m.kind);$('reply-bar').hidden=false;$('composer-input').focus();}
+function startReply(m,chat){showReply({id:m.id,key:m.key?.id,text:m.text,kind:m.kind,fromMe:!!m.fromMe,who:m.fromMe?'Tú':chat.name});$('composer-input').focus();}
+function showReply(r){replyTo=r;$('reply-who').textContent=r.who;$('reply-text').textContent=r.text||mediaLabel(r.kind);$('reply-bar').hidden=false;}
 function cancelReply(){replyTo=null;$('reply-bar').hidden=true;}
 $('reply-cancel').onclick=()=>{cancelReply();$('composer-input').focus();};
 // Composer: what the owner types goes out exactly as written; like a reply from the phone, it pauses the bot in that chat.
@@ -213,7 +217,7 @@ $('composer').onsubmit=async e=>{e.preventDefault();const input=$('composer-inpu
  const chat=inboxChats.find(c=>c.jid===jid),wasBotOn=!!chat?.enabled&&state.bot.enabled,temp={id:'pending-'+Date.now(),text,kind:'text',fromMe:true,pending:true,timestamp:Date.now(),...(quote?{quote:{id:quote.key,text:quote.text,kind:quote.kind,fromMe:quote.fromMe}}:{})};
  chatCache.messages=[...chatCache.messages,temp];input.value='';growComposer();closeQuickMenu();closeEmojiMenu();cancelReply();drawConversation();$('conversation-scroll').scrollTop=$('conversation-scroll').scrollHeight;
  try{const r=await api('chat/send',{jid,text,...(quote?{quoteId:quote.id}:{})});if(lastBubbleId===temp.id)lastBubbleId=r.id;temp.id=r.id;temp.pending=false;temp.status=r.status;if(wasBotOn)$('inbox-notice').textContent='Respondiste tú: el bot queda en pausa en este chat.';await refresh();if(selectedChat===jid)loadChat(jid);}
- catch(err){temp.pending=false;temp.failed=true;error(err.message);if(!input.value){input.value=text;growComposer();}drawConversation();}};
+ catch(err){temp.pending=false;temp.failed=true;error(err.message);if(!input.value){input.value=text;growComposer();if(quote&&!replyTo&&selectedChat===jid)showReply(quote);}drawConversation();}};
 function closeQuickMenu(){$('quick-menu').hidden=true;$('quick-replies').setAttribute('aria-expanded','false');}
 $('quick-replies').onclick=()=>{const menu=$('quick-menu');if(!menu.hidden)return closeQuickMenu();closeEmojiMenu();menu.replaceChildren();const replies=state.bot.savedReplies||[];
  menu.append(el('p','quick-title','Tus respuestas guardadas'));for(const r of replies){const b=el('button','quick-item');b.type='button';b.setAttribute('role','menuitem');b.append(el('strong','',r.name),el('span','',r.text));b.onclick=()=>{const input=$('composer-input');input.value=r.text;growComposer();closeQuickMenu();input.focus();};menu.append(b);}
@@ -229,14 +233,14 @@ function applyTheme(choice){const root=document.documentElement,dark=choice==='d
 $('theme-toggle').onclick=()=>{const next={auto:'dark',dark:'light',light:'auto'}[document.documentElement.dataset.themeChoice||'auto'];try{localStorage.setItem('conversa-theme',next);}catch{}applyTheme(next);};
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if((document.documentElement.dataset.themeChoice||'auto')==='auto')applyTheme('auto');});
 // Installable app and push notifications. The service worker caches nothing: it only shows notifications.
-let swReg=null,installPrompt=null;
+let swReg=null,installPrompt=null,pushSynced=false;
 const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1,standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 const pushSupported=()=>LIVE&&isSecureContext&&'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
 const keyBytes=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-s.length%4)%4)),c=>c.charCodeAt(0));
 async function currentSubscription(){try{return await swReg?.pushManager.getSubscription()||null;}catch{return null;}}
 async function updatePushCard(){const status=$('push-status');$('ios-hint').hidden=!(isIOS&&!standalone());$('push-preview').checked=state?.notifications?.preview!==false;
  if(!pushSupported()){status.textContent=isIOS&&!standalone()?'En iPhone, primero instala Conversa en tu pantalla de inicio.':LIVE?'Este navegador no admite notificaciones.':'Vista previa: las notificaciones funcionan en el servidor.';for(const id of ['push-enable','push-test','push-disable'])$(id).hidden=true;$('push-preview').disabled=true;return;}
- const sub=await currentSubscription(),denied=Notification.permission==='denied';$('push-enable').hidden=!!sub;$('push-test').hidden=!sub;$('push-disable').hidden=!sub;$('push-enable').disabled=denied;$('push-preview').disabled=false;
+ const sub=await currentSubscription(),denied=Notification.permission==='denied';if(sub&&online&&!pushSynced){pushSynced=true;api('push/subscribe',{subscription:sub.toJSON()}).catch(()=>{});}$('push-enable').hidden=!!sub;$('push-test').hidden=!sub;$('push-disable').hidden=!sub;$('push-enable').disabled=denied;$('push-preview').disabled=false;
  status.textContent=denied?'Bloqueaste las notificaciones de Conversa en este navegador. Actívalas en los ajustes del sitio.':sub?'Activas en este dispositivo: te avisamos de cada mensaje nuevo cuando Conversa no está en pantalla.':'Recibe un aviso de cada mensaje nuevo, aunque Conversa esté cerrado.';}
 $('push-enable').onclick=async()=>{error('');try{if(await Notification.requestPermission()!=='granted')return updatePushCard();swReg ||=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;const res=await fetch('/api/push/key');if(!res.ok)throw new Error('No se pudo preparar el aviso.');const {publicKey}=await res.json();
  const sub=await swReg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes(publicKey)});await api('push/subscribe',{subscription:sub.toJSON()});await refresh();}catch(e){error(e.message||'No se pudieron activar las notificaciones.');}updatePushCard();};
