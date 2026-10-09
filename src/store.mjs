@@ -51,5 +51,7 @@ export class Store {
   list(w,b,limit=500,offset=0) { return this.db.prepare('SELECT id,value FROM records WHERE workspace=? AND bucket=? ORDER BY updated DESC,id LIMIT ? OFFSET ?').all(w,b,limit,offset).map(r=>this.decode(JSON.stringify([w,b,r.id]),r.value)); }
   count(w,b) { return this.db.prepare('SELECT COUNT(*) AS n FROM records WHERE workspace=? AND bucket=?').get(w,b).n; }
   trim(w,b,limit=500) { this.db.prepare('DELETE FROM records WHERE workspace=? AND bucket=? AND id NOT IN (SELECT id FROM records WHERE workspace=? AND bucket=? ORDER BY updated DESC LIMIT ?)').run(w,b,w,b,limit); }
+  // Deleting a client account: every record of that workspace (messages, session keys, settings…) in one statement.
+  purge(w) { if(!w||w==='owner'||w==='system')throw new Error('Refusing to purge a reserved workspace');this.db.prepare('DELETE FROM records WHERE workspace=?').run(w); }
   close() { this.db.close(); }
 }

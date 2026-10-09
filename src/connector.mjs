@@ -27,14 +27,16 @@ export class Connector {
    });
   }
  }
- snapshot(){return {status:this.status,qr:this.qr,qrExpiresAt:this.qrExpiresAt||null,note:this.note,identity:this.identity,hasSession:!!this.store.get(this.workspace,'auth','creds'),autoReply:!!this.store.get(this.workspace,'settings','bot')?.enabled,link:this.history.meta(),history:this.store.get(this.workspace,'settings','history'),retries:this.retries};}
+ snapshot(){return {status:this.status,qr:this.qr,qrExpiresAt:this.qrExpiresAt||null,pairingCode:this.pairingCode||null,pairingExpiresAt:this.pairingExpiresAt||null,note:this.note,identity:this.identity,hasSession:!!this.store.get(this.workspace,'auth','creds'),autoReply:!!this.store.get(this.workspace,'settings','bot')?.enabled,link:this.history.meta(),history:this.store.get(this.workspace,'settings','history'),retries:this.retries};}
  desired(active){this.store.put(this.workspace,'settings','connection',{active});}
+ // Link with a code typed in WhatsApp → Linked devices → Link with phone number: no QR, works on the same phone.
+ async pair(number){if(!/^\d{8,15}$/.test(number||''))throw new Error('Número inválido');this.pause(false);this.store.clear(this.workspace,'auth');this.pairingNumber=number;await this.connect();}
  async resume(){if(this.store.get(this.workspace,'auth','creds')&&this.store.get(this.workspace,'settings','connection')?.active!==false)await this.connect();}
  async connect(retry=false){
   if(['connecting','qr','connected'].includes(this.status)&&!retry)return;
   this.desired(true);clearTimeout(this.retryTimer);clearTimeout(this.qrTimer);
   const epoch=++this.epoch;this.socket?.end(new Error('Connection replaced'));
-  Object.assign(this,{socket:null,qr:null,qrExpiresAt:null,status:'connecting',note:''});
+  Object.assign(this,{socket:null,qr:null,qrExpiresAt:null,status:'connecting',note:'',pairingRequested:false,paired:false});
   if(!retry)this.retries=0;
   const active=()=>this.epoch===epoch, auth=authState(this.store,this.workspace,active);
   const guard=fn=>(...args)=>{if(!active())return;try{Promise.resolve(fn(...args)).catch(()=>{if(active())this.fail('No se pudo conservar la sesión o un mensaje. Revisa almacenamiento y reinicia el servicio.');});}catch{if(active())this.fail('No se pudieron guardar datos. Revisa el almacenamiento.');}};
@@ -56,17 +58,26 @@ export class Connector {
  }
  async update(update,epoch){
   if(this.epoch!==epoch)return;
+  if(update.isNewLogin)this.paired=true;
+  if(update.qr&&this.pairingNumber){if(this.pairingRequested)return;this.pairingRequested=true;
+   try{const code=await this.socket.requestPairingCode(this.pairingNumber);if(this.epoch!==epoch)return;Object.assign(this,{pairingCode:String(code).replace(/^(.{4})(.{4})$/,'$1-$2'),pairingExpiresAt:Date.now()+180000,status:'pairing',note:''});}
+   catch{if(this.epoch===epoch)this.fail('WhatsApp no entregó el código de vinculación. Inténtalo de nuevo.');}
+   return;}
   if(update.qr){const image=await QRCode.toDataURL(update.qr,{width:300,margin:2,errorCorrectionLevel:'M'});if(this.epoch!==epoch)return;this.qr=image;this.status='qr';this.qrExpiresAt=Date.now()+55000;clearTimeout(this.qrTimer);this.qrTimer=setTimeout(()=>{if(this.epoch===epoch){this.qr=null;this.qrExpiresAt=null;}},55000);this.qrTimer.unref?.();}
   if(update.connection==='open'){
    const identity={name:this.socket.user?.name||'Mi WhatsApp',number:this.socket.user?.id?.split(':')[0]?.split('@')[0]||''};
    if(!identity.number){this.fail('WhatsApp no entregó la identidad de la cuenta.');return;}
+   // A client account links only its own number: a code used from another WhatsApp is undone at once.
+   if(this.expectedNumber&&identity.number!==this.expectedNumber){const sock=this.socket;this.desired(false);++this.epoch;sock?.logout?.().catch(()=>{});this.store.clear(this.workspace,'auth');Object.assign(this,{socket:null,status:'disconnected',identity:null,pairingNumber:null,pairingCode:null,note:'Ese código se usó desde otro número de WhatsApp. Vincula el número de tu cuenta.'});return;}
    try{this.history.establish(identity.number,this.legacy);}catch{this.desired(false);this.fail('Esta cuenta no corresponde al espacio. Vuelve a vincular el número original.');return;}
-   this.identity=identity;this.status='connected';this.qr=null;this.qrExpiresAt=null;clearTimeout(this.qrTimer);this.retries=0;this.note='';
+   this.identity=identity;this.status='connected';this.qr=null;this.qrExpiresAt=null;clearTimeout(this.qrTimer);this.retries=0;this.note='';Object.assign(this,{pairingNumber:null,pairingCode:null,pairingExpiresAt:null});
   }
   if(update.connection==='close'){
    // Invalidate key stores immediately, before any cleanup or retry.
    ++this.epoch;this.socket=null;this.qr=null;this.qrExpiresAt=null;clearTimeout(this.qrTimer);
    const error=update.lastDisconnect?.error,code=error?.output?.statusCode,detail=error?.data;
+   // A pairing code that was never used expires: start over instead of retrying forever with half-made keys.
+   if(this.pairingNumber&&!this.paired&&code!==DisconnectReason.restartRequired){this.desired(false);this.store.clear(this.workspace,'auth');Object.assign(this,{status:'disconnected',pairingNumber:null,pairingCode:null,pairingExpiresAt:null,note:'El código caducó o no se usó. Pide uno nuevo.'});return;}
    // The link ends only when WhatsApp revokes this device: the owner removed it in Linked devices (401, or a
    // device_removed conflict). Generic stream errors arrive as 500 "bad session" and are usually transient, so
    // they keep the keys and reconnect like any other drop.

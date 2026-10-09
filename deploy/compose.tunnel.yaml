@@ -3,6 +3,10 @@
 #   docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.tunnel.yaml up -d
 # En Cloudflare, el hostname público del túnel apunta a http://conversa:4318.
 services:
+  conversa:
+    environment:
+      # The tunnel is the only way in (no open ports), so Cloudflare's CF-Connecting-IP is the real client IP for rate limits.
+      CONVERSA_TRUST_CF: "1"
   proxy:
     profiles: ["caddy"] # Caddy y los puertos 80/443 quedan apagados en esta variante.
   tunnel:

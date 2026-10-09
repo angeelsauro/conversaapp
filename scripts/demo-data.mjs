@@ -5,10 +5,10 @@ const DEMO_DIEGO='34600000104@s.whatsapp.net',DEMO_CARMEN='34600000105@s.whatsap
 const demoRaw=(jid,id,ts,text,name,{fromMe=false,message}={})=>({key:{remoteJid:jid,id,fromMe},messageTimestamp:Math.floor(ts/1000),pushName:fromMe?undefined:name,message:message||{conversation:text}});
 
 // Same surface the server and the bot use from the real Connector. The socket accepts sends and goes nowhere.
-export function demoConnector(store,{History,qr,media={}}){
- const history=new History(store),timers=[],later=(fn,ms)=>timers.push(setTimeout(fn,ms));let script,carmen=false,diego=false;
- const c={history,workspace:'owner',status:'disconnected',qr:null,epoch:1,note:'',identity:null,socket:null,
-  snapshot:()=>({status:c.status,qr:c.qr,qrExpiresAt:null,note:c.note,identity:c.identity,hasSession:!!c.identity,autoReply:!!store.get('owner','settings','bot')?.enabled,link:history.meta(),history:store.get('owner','settings','history'),retries:0}),
+export function demoConnector(store,{History,qr,media={},workspace='owner'}){
+ const history=new History(store,workspace),timers=[],later=(fn,ms)=>timers.push(setTimeout(fn,ms));let script,carmen=false,diego=false;
+ const c={history,workspace,status:'disconnected',qr:null,epoch:1,note:'',identity:null,socket:null,
+  snapshot:()=>({status:c.status,qr:c.qr,qrExpiresAt:null,pairingCode:c.pairingCode||null,pairingExpiresAt:c.pairingExpiresAt||null,note:c.note,identity:c.identity,hasSession:!!c.identity,autoReply:!!store.get(workspace,'settings','bot')?.enabled,link:history.meta(),history:store.get(workspace,'settings','history'),retries:0}),
   async connect(){if(['connecting','qr','connected'].includes(c.status))return;const epoch=++c.epoch;
    // A stored (fictional) session reconnects directly; otherwise a QR that links nothing is shown for a few seconds.
    if(c.identity){Object.assign(c,{status:'connecting',note:''});later(()=>{if(c.epoch===epoch)online();},1500);return;}
@@ -17,17 +17,19 @@ export function demoConnector(store,{History,qr,media={}}){
   pause(){c.epoch++;clearInterval(script);Object.assign(c,{status:'paused',qr:null,socket:null,note:'Recepción y respuestas pausadas.'});},
   async disconnect(){c.pause();Object.assign(c,{status:'disconnected',identity:null,note:'Sesión de vista previa desvinculada.'});},
   async resume(){online();},
+  // Preview of the client sign-up: a fictional code that «WhatsApp» accepts a few seconds later.
+  async pair(number){const epoch=++c.epoch;Object.assign(c,{status:'pairing',qr:null,pairingCode:'DEMO-2026',pairingExpiresAt:Date.now()+180000,note:''});later(()=>{if(c.epoch===epoch&&c.status==='pairing')online(number);},6000);},
   // Fictional files keyed by their path; the real connector downloads them from WhatsApp.
   async downloadMedia(source){const file=media[source.message.directPath?.split('/').pop()];if(c.status!=='connected'||!file)throw new Error('OFFLINE');return Buffer.from(file,'base64');},
   stop(){clearInterval(script);for(const t of timers)clearTimeout(t);}
  };
- function online(){const epoch=++c.epoch,started=Date.now();
-  Object.assign(c,{status:'connected',qr:null,note:'',identity:{name:'Panadería Demo',number:DEMO_OWNER},socket:{async sendMessage(jid,content,options={}){return {key:{remoteJid:jid,id:options.messageId||'DEMO'+Date.now(),fromMe:true}};},async fetchMessageHistory(){}}});
+ function online(number=DEMO_OWNER){const epoch=++c.epoch,started=Date.now();
+  Object.assign(c,{status:'connected',qr:null,pairingCode:null,pairingExpiresAt:null,note:'',identity:{name:'Panadería Demo',number},socket:{async sendMessage(jid,content,options={}){return {key:{remoteJid:jid,id:options.messageId||'DEMO'+Date.now(),fromMe:true}};},async fetchMessageHistory(){}}});
   // Scripted contacts: an unverified chat writes after a few seconds (unread badge, optional sound, never answered);
   // once the bot is active and Diego's chat is eligible, Diego asks something that matches a saved keyword.
   clearInterval(script);script=setInterval(()=>{if(c.epoch!==epoch)return clearInterval(script);const t=Date.now();
    if(!carmen&&t-started>8000){carmen=true;history.ingest(demoRaw(DEMO_CARMEN,'live-carmen-'+t,t,'¿Me confirmas si estará listo a las 10?','Carmen López'),'live');}
-   if(!diego&&store.get('owner','settings','bot')?.enabled&&history.eligible(history.chat(DEMO_DIEGO))){diego=true;later(()=>{if(c.epoch===epoch){const now=Date.now();history.ingest(demoRaw(DEMO_DIEGO,'live-diego-'+now,now,'Hola, ¿a qué hora abren mañana?','Diego Martín'),'live');}},4000);}
+   if(!diego&&store.get(workspace,'settings','bot')?.enabled&&history.eligible(history.chat(DEMO_DIEGO))){diego=true;later(()=>{if(c.epoch===epoch){const now=Date.now();history.ingest(demoRaw(DEMO_DIEGO,'live-diego-'+now,now,'Hola, ¿a qué hora abren mañana?','Diego Martín'),'live');}},4000);}
   },1000);script.unref?.();
  }
  return c;
@@ -35,14 +37,14 @@ export function demoConnector(store,{History,qr,media={}}){
 
 // Seven fictional chats covering every state the panel shows. Link cutoff three days ago.
 export function seedDemo({store,history:h,bot,now=Date.now(),media={}}){
- store.put('owner','settings','link',{number:DEMO_OWNER,firstLinkedAt:now-3*demoDay,cutoffSource:'first-connection'});
+ const w=h.w;store.put(w,'settings','link',{number:DEMO_OWNER,firstLinkedAt:now-3*demoDay,cutoffSource:'first-connection'});
  bot.configure({mode:'standard',keywordOnly:true,handoffAfterReply:true,activeReplyId:'horario',savedReplies:[
   {id:'horario',name:'Horario',text:'¡Hola! Abrimos de lunes a sábado de 8:00 a 20:00 y los domingos de 9:00 a 14:00.',keywords:['horario','a qué hora','abren']},
   {id:'carta',name:'Carta y precios',text:'Aquí tienes nuestra carta con precios actualizados: https://ejemplo.com/carta',keywords:['precio','precios','carta','cuánto cuesta']},
   {id:'encargos',name:'Encargos',text:'Para encargos, dinos qué necesitas y para qué día. Te confirmamos personalmente.',keywords:['encargo','pedido','reservar']}
  ]});
  const add=(jid,name,items)=>{for(const [i,[ago,text,opts]] of items.entries())h.ingest(demoRaw(jid,'seed-'+jid.split('@')[0]+'-'+i,now-ago,text,name,opts),opts?.live?'live':'history');};
- const botReply=(jid,ago,text)=>{const ts=now-ago,id='BOT'+ts;store.put('owner','messages',`${jid}:${id}`,{id:`${jid}:${id}`,key:{remoteJid:jid,id,fromMe:true},jid,name:'Conversa',text,kind:'text',timestamp:ts,fromMe:true,bot:true});const chat=h.chat(jid);Object.assign(chat,{enabled:false,handoffAt:ts,handoffReason:'greeting',latest:ts,last:{text,kind:'text',fromMe:true,bot:true,timestamp:ts}});h.save(chat);};
+ const botReply=(jid,ago,text)=>{const ts=now-ago,id='BOT'+ts;store.put(w,'messages',`${jid}:${id}`,{id:`${jid}:${id}`,key:{remoteJid:jid,id,fromMe:true},jid,name:'Conversa',text,kind:'text',timestamp:ts,fromMe:true,bot:true});const chat=h.chat(jid);Object.assign(chat,{enabled:false,handoffAt:ts,handoffReason:'greeting',latest:ts,last:{text,kind:'text',fromMe:true,bot:true,timestamp:ts}});h.save(chat);};
  // Before the cutoff: always excluded.
  add('34600000101@s.whatsapp.net','Marcos Ruiz',[[6*demoDay,'¿Me guardas dos barras para el sábado?'],[6*demoDay-20*demoMinute,'Claro, quedan apartadas.',{fromMe:true}],[5*demoDay,'Aquí tienes la carta con precios: https://ejemplo.com/carta',{fromMe:true}],[5*demoDay-3*demoMinute,'Perdona, era para otro chat'],[50*demoMinute,'¿Tenéis pan sin gluten esta semana?']]);
  // Marcos deleted one of his messages for everyone.
@@ -63,5 +65,5 @@ export function seedDemo({store,history:h,bot,now=Date.now(),media={}}){
  add('34600000106@s.whatsapp.net','Sofía Navarro',[[2*demoDay,'Hola'],[90*demoMinute,'',{live:true,message:{viewOnceMessageV2:{message:{imageMessage:{}}}}}]]);
  // The contact opted out with STOP.
  add('34600000107@s.whatsapp.net','Pablo Gómez',[[2*demoDay,'Hola, ¿precio de la empanada?'],[2*demoDay-10*demoMinute,'STOP']]);
- store.put('owner','settings','history',{updatedAt:now,progress:100,received:true,complete:false});
+ store.put(w,'settings','history',{updatedAt:now,progress:100,received:true,complete:false});
 }

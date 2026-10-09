@@ -3,6 +3,7 @@
 # Se ejecuta como root desde la consola del proveedor (ver SERVIDOR.md). Pregunta el subdominio y el token del
 # túnel la primera vez; no guarda el token de GitHub y no imprime secretos. Volver a ejecutarlo actualiza el código
 # y conserva datos, claves y sesión de WhatsApp. Con «--token» vuelve a pedir el token del túnel y lo reemplaza.
+# Con «--set CLAVE=valor» guarda un ajuste permitido en deploy/.env (p. ej. --set APP_ORIGIN=https://app.tudominio.com).
 set -euo pipefail
 REPO="angeelsauro/conversaapp"
 BRANCH="${CONVERSA_BRANCH:-claude/conversa-review-publish-131w94}"
@@ -21,7 +22,11 @@ ask() { # ask VAR "prompt" [secret]: reads from the terminal even when this scri
 
 main() { # Everything runs inside a function, so bash has read the whole script before any command can touch stdin.
   [ "$(id -u)" = 0 ] || { echo "Ejecútalo como root."; exit 1; }
-  local new_token=""; [ "${1:-}" = "--token" ] && new_token=1
+  local new_token="" sets=()
+  while [ $# -gt 0 ]; do case "$1" in --token) new_token=1;; --set) sets+=("${2:-}"); shift;; *) echo "Opción desconocida: $1"; exit 1;; esac; shift; done
+  # Only these settings, with plain values (no spaces, quotes or shell characters), may be written to deploy/.env.
+  for kv in "${sets[@]}"; do case "${kv%%=*}" in APP_ORIGIN|CONVERSA_ANDROID_PACKAGE|CONVERSA_ANDROID_SHA256|CONVERSA_MAX_ACCOUNTS|CONVERSA_DEMO_ACCOUNT) ;; *) echo "Ajuste no permitido: ${kv%%=*}"; exit 1;; esac
+    [[ "$kv" == *=* && "${kv#*=}" =~ ^[A-Za-z0-9:/._,@+-]*$ ]] || { echo "Valor inválido para ${kv%%=*}"; exit 1; }; done
   if [ ! -f "$DIR/deploy/.env" ]; then ask CONVERSA_DOMAIN 'Subdominio del panel (ej. panel-7k2q.tudominio.com): '; fi
   if [ -n "$new_token" ] || [ ! -f "$DIR/deploy/.env" ] || ! grep -q '^CLOUDFLARE_TUNNEL_TOKEN=.' "$DIR/deploy/.env"; then
     ask CLOUDFLARE_TUNNEL_TOKEN 'Token del túnel de Cloudflare (o el comando completo de Cloudflare): ' secret
@@ -74,6 +79,7 @@ main() { # Everything runs inside a function, so bash has read the whole script 
   if [ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]; then
     (umask 077; { grep -v '^CLOUDFLARE_TUNNEL_TOKEN=' deploy/.env || true; printf 'CLOUDFLARE_TUNNEL_TOKEN=%s\n' "$CLOUDFLARE_TUNNEL_TOKEN"; } > deploy/.env.new && mv deploy/.env.new deploy/.env)
   fi
+  for kv in "${sets[@]}"; do (umask 077; { grep -v "^${kv%%=*}=" deploy/.env || true; printf '%s\n' "$kv"; } > deploy/.env.new && mv deploy/.env.new deploy/.env); echo "   Ajuste guardado: ${kv%%=*}"; done
   local compose=(docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.tunnel.yaml)
   "${compose[@]}" build -q </dev/null
   "${compose[@]}" up -d --remove-orphans --force-recreate </dev/null

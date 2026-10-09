@@ -85,6 +85,15 @@ Alternativa sin Cloudflare: el `compose.yaml` original con Caddy y `CONVERSA_ALL
 - **Instalación como app:** el service worker solo muestra notificaciones. No guarda páginas ni datos, así que cada apertura pasa por Cloudflare Access y por tu sesión.
 - **Tiempo real (SSE):** necesita sesión, admite 8 flujos como máximo y se corta al cerrar o revocar la sesión.
 
+### Cuentas de clientes (0.5.0)
+
+- **Aislamiento:** cada cliente tiene su propio espacio cifrado. Cada consulta se resuelve con el espacio de la sesión, y las pruebas comprueban que un cliente no ve chats, mensajes ni archivos de otro, ni los del propietario.
+- **Dos puertas separadas:** el código del propietario solo funciona en el panel privado (con Access), y las cuentas de clientes solo en la app pública. Una sesión de un lado no vale en el otro.
+- **Vinculación con código:** el código de WhatsApp se pide para el número de la cuenta. Si alguien lo usa desde otro número, la vinculación se deshace al instante. Esto demuestra que el cliente controla ese WhatsApp.
+- **Contraseñas:** se guardan con scrypt y una sal por cuenta. Los intentos están limitados por IP (la de Cloudflare, porque el túnel es la única entrada) y por número. La recuperación usa un código que llega al propio WhatsApp del cliente.
+- **Borrado:** «Eliminar cuenta» desvincula el dispositivo y borra al instante todo lo del cliente en la base de datos. Las copias de seguridad cifradas lo conservan hasta su rotación.
+- **Riesgo aceptado por Andina Music:** la conexión no oficial puede llevar a que WhatsApp restrinja números de clientes. La app lo advierte antes de vincular y exige aceptarlo.
+
 ## 4. Riesgos que quedan para la prueba publicada
 
 | Riesgo | Qué hacer |

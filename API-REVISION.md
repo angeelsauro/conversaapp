@@ -53,6 +53,33 @@ Desde 0.3.0, /api/state incluye hasta 2000 chats y `totalChats`. Cada chat lleva
   - un mensaje guardado como `other` se completa si WhatsApp lo vuelve a entregar.
 - **POST /api/history/more:** busca el mensaje de referencia entre todas las direcciones del contacto (PN y LID). Si el chat no tiene ninguno, responde 400 con una explicación legible.
 
+## Cuentas de clientes (0.5.0)
+
+Hay dos tipos de acceso:
+- **Tu panel privado** (`PUBLIC_ORIGIN`): código del propietario y espacio `owner`.
+- **La app pública** (`APP_ORIGIN`): cuentas de clientes, cada una con su espacio aislado `u_…`. Cada cuenta tiene su propio WhatsApp, mensajes, bot, notificaciones y archivos.
+
+En producción, cada dirección solo acepta su tipo de acceso. En local, `127.0.0.1` hace de panel y `localhost` de app. Todas las rutas autenticadas siguientes funcionan igual para ambos, siempre dentro del espacio de quien llama.
+
+- **GET /api/config** (pública): {mode: 'app'|'panel', signup, terms}.
+- **POST /api/account/signup {number, password, accept:true}:**
+  - Crea la cuenta (contraseña con scrypt) y abre una sesión de 30 días.
+  - Pide a WhatsApp un **código de vinculación** para ese número y devuelve {pairingCode} (o aparece en /api/state).
+  - Si la vinculación se completa con otro número, se deshace al instante.
+  - Límites: 5 registros por hora por IP y `CONVERSA_MAX_ACCOUNTS` en total (503 si se alcanza).
+  - Un número ya vinculado da 409. Un registro sin terminar puede rehacerse pasados 30 minutos.
+- **POST /api/account/login {number, password}:** misma respuesta para un número inexistente y una contraseña errónea. Límites: 10 por minuto por IP y 10 cada 15 minutos por número.
+- **POST /api/account/recover {number}:**
+  - Si el WhatsApp de la cuenta está conectado, envía un código de 6 cifras al chat «Mensaje a ti mismo» del cliente y devuelve {method:'code'}. Si no, devuelve {method:'support'}.
+  - POST /api/account/recover/verify {number, code, password} cambia la contraseña y cierra las demás sesiones. El código dura 10 minutos y admite 5 intentos.
+- **POST /api/account/password {current, password}:** cambia la contraseña y cierra las demás sesiones.
+- **POST /api/account/delete {password}:** desvincula el dispositivo en WhatsApp y borra todo el espacio (`Store.purge`), la cuenta, el número y las sesiones. Responde con `Clear-Site-Data`. La cuenta demo no se puede borrar.
+- **POST /api/connect** (cliente): sin vinculación vigente, pide un código nuevo (6 por hora). Si no, reconecta.
+- **GET /api/admin/accounts** (solo propietario): número enmascarado, fecha, vinculación y estado. Nunca mensajes.
+- **GET /.well-known/assetlinks.json:** a partir de `CONVERSA_ANDROID_PACKAGE` y `CONVERSA_ANDROID_SHA256` (huellas separadas por comas), para la app Android (TWA).
+- **GET /legal/*.html|css:** páginas públicas de privacidad, condiciones y eliminación de cuenta.
+- **/api/state** añade `role` ('owner'|'client') y `account` ({number, linked, demo, createdAt}). Mientras la cuenta no está vinculada, no incluye chats ni mensajes.
+
 ## Mutaciones autenticadas
 
 - POST /api/logout y /api/revoke-sessions.

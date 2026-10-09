@@ -12,13 +12,13 @@ import {DEMO_MEDIA} from './demo-media.mjs';
 if(process.env.NODE_ENV==='production')throw new Error('La vista previa no se ejecuta en producción.');
 const port=Number(process.env.PREVIEW_PORT||4319),dir=mkdtempSync(join(tmpdir(),'conversa-preview-'));
 const qr=await QRCode.toDataURL('Vista previa de Conversa. Este código no vincula ningún dispositivo.',{width:300,margin:2,errorCorrectionLevel:'M'});
-const app=createApp({dir,port,connectorFactory:store=>demoConnector(store,{History,qr,media:DEMO_MEDIA}),testEndpoints:process.env.CONVERSA_TEST_ENDPOINTS==='on'});
+const app=createApp({dir,port,connectorFactory:(store,workspace)=>demoConnector(store,{History,qr,media:DEMO_MEDIA,workspace}),testEndpoints:process.env.CONVERSA_TEST_ENDPOINTS==='on'});
 seedDemo({store:app.store,history:app.connector.history,bot:app.bot,media:DEMO_MEDIA});
 
 app.server.listen(port,'127.0.0.1',async()=>{
  await app.start();
  const token=readFileSync(join(dir,'owner-token'),'utf8').trim();
- console.log(`\nVista previa de Conversa con datos ficticios (sin WhatsApp, sin envíos reales).\nAbre: http://127.0.0.1:${port}/#access=${token}\nEl código es temporal y se borra al cerrar (Ctrl+C).\n`);
+ console.log(`\nVista previa de Conversa con datos ficticios (sin WhatsApp, sin envíos reales).\nTu panel:          http://127.0.0.1:${port}/#access=${token}\nApp para clientes: http://localhost:${port}/  (registro con un código ficticio)\nEl código es temporal y se borra al cerrar (Ctrl+C).\n`);
 });
 let closing=false;
 const shutdown=()=>{if(closing)return;closing=true;app.connector.stop();app.close();rmSync(dir,{recursive:true,force:true});process.exit(0);};

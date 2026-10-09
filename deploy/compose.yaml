@@ -9,6 +9,12 @@ services:
     tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
     environment:
       PUBLIC_ORIGIN: https://${CONVERSA_DOMAIN:?Set CONVERSA_DOMAIN}
+      # Public app for client accounts (optional): its own hostname, without Cloudflare Access. See PUBLICAR-GOOGLE-PLAY.md.
+      APP_ORIGIN: ${APP_ORIGIN:-}
+      CONVERSA_MAX_ACCOUNTS: ${CONVERSA_MAX_ACCOUNTS:-30}
+      CONVERSA_ANDROID_PACKAGE: ${CONVERSA_ANDROID_PACKAGE:-}
+      CONVERSA_ANDROID_SHA256: ${CONVERSA_ANDROID_SHA256:-}
+      CONVERSA_DEMO_ACCOUNT: ${CONVERSA_DEMO_ACCOUNT:-}
       CONVERSA_KEY_FILE: /run/secrets/encryption_key
       CONVERSA_OWNER_TOKEN_FILE: /run/secrets/owner_token
     volumes:

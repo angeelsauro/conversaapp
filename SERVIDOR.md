@@ -78,6 +78,27 @@ Solo se desvincula en estos casos:
 - **PC:** Chrome o Edge muestran un botón de instalar en la barra de direcciones. Las notificaciones se activan igual.
 - Pulsa **Enviar una prueba** para comprobarlo. Si Conversa está en pantalla, no se envían notificaciones, porque ya ves el mensaje.
 
+## Publicar la app para clientes (multiusuario)
+
+Tu panel privado sigue en su subdominio con Cloudflare Access. La app para clientes va en **otra dirección pública, sin Access**: cada cliente entra con su número y su contraseña.
+
+1. **Dirección pública en Cloudflare.**
+   - Ve a **Zero Trust** → **Networks** → **Tunnels** → `conversa` → **Public hostname** → **Add a public hostname**.
+   - Subdominio, por ejemplo, `app`; dominio, `mutuomatch.com` (o el de Andina Music cuando esté en Cloudflare).
+   - **Service:** `HTTP` → `conversa:4318`. Guarda.
+   - **No** crees una aplicación de Access para esta dirección.
+2. **Activarla en el servidor.** Entra con `ssh` y pega la línea de instalación de siempre, añadiendo al final, después de `bash`:
+   ```
+    -s -- --set APP_ORIGIN=https://app.mutuomatch.com
+   ```
+   (Cambia la dirección por la tuya.)
+3. Abre `https://app.mutuomatch.com`. Debe aparecer la pantalla de bienvenida con «Crear cuenta».
+
+**Ajustes opcionales** (con más `--set CLAVE=valor` en la misma línea):
+- `CONVERSA_MAX_ACCOUNTS=30`: límite de cuentas de clientes. Cada WhatsApp conectado usa memoria; con 4 GB, unas 30 o 40.
+- `CONVERSA_DEMO_ACCOUNT=51900000000:ClaveDemo2026`: cuenta de demostración con datos ficticios para los revisores de Google. Nunca toca WhatsApp.
+- `CONVERSA_ANDROID_PACKAGE=com.andinamusic.conversa` y `CONVERSA_ANDROID_SHA256=AA:BB:…`: activan la verificación de la app Android (ver PUBLICAR-GOOGLE-PLAY.md).
+
 ## Actualizar o revisar
 
 - **Actualizar:** vuelve a pegar la misma línea del paso 5, con un token de GitHub vigente. Se conservan los datos, las claves y la sesión de WhatsApp.

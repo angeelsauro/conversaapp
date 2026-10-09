@@ -235,3 +235,43 @@ Primera prueba con la cuenta real del propietario (609 chats): aparecían burbuj
 
 - `npm test`: 56 pruebas aprobadas, 0 fallidas (3 nuevas en test/profile.test.mjs).
 - Navegador real: 62 comprobaciones contra `npm run preview` y 63 contra la demo. Incluyen el perfil con número y archivos, abrir una foto desde el perfil, Esc, la tarjeta de ubicación con su enlace al mapa, el mensaje eliminado, un enlace seguro, la búsqueda en el chat y el perfil a pantalla completa en el móvil.
+
+## Versión 0.5.0 (9 de octubre de 2026): app pública multiusuario
+
+Decisión del propietario: publicar en Google Play para clientes nuevos (cuenta de organización de Andina Music, con D-U-N-S), con la conexión no oficial actual y el riesgo advertido a cada cliente.
+
+### Cambios
+
+- **Multiusuario:** un espacio aislado por cliente (`u_…`) en la misma base cifrada, cada uno con su conexión, bot, notificaciones, archivos y fotos de perfil. El panel del propietario (`owner`) no cambia.
+  - Las cachés, la presencia, el SSE y las notificaciones se separan por espacio.
+  - Las fotos de perfil se piden por turnos entre espacios, de una en una.
+- **Dos orígenes:** `PUBLIC_ORIGIN` (panel privado, tras Access) y `APP_ORIGIN` (app pública). En producción, cada origen acepta solo su tipo de sesión.
+- **Registro:**
+  - Número y contraseña (scrypt), con aceptación obligatoria del aviso de riesgo y de las condiciones.
+  - Vinculación con **código** en WhatsApp («Vincular con el número de teléfono»), que funciona en el mismo móvil.
+  - El conector comprueba que el número vinculado sea el de la cuenta; si no, desvincula al instante.
+- **Cuenta:**
+  - Sesión de 30 días; cambiar la contraseña cierra las demás sesiones.
+  - Recuperación con un código de 6 cifras enviado al propio WhatsApp del cliente.
+  - **Eliminar cuenta** dentro de la app, como exige Google Play: desvincula el dispositivo, borra todo el espacio y limpia el navegador.
+- **Interfaz:** bienvenida, pestañas de crear cuenta y entrar, recuperación, pantalla de vinculación con código grande y pasos, y la tarjeta «Tu cuenta» en Ajustes. «Conexión» pasa a llamarse «Ajustes».
+- **Para Google Play:**
+  - `/.well-known/assetlinks.json` configurable;
+  - páginas legales públicas en `/legal/`;
+  - cuenta de demostración para los revisores (`CONVERSA_DEMO_ACCOUNT`), con datos ficticios y sin acceso a WhatsApp.
+- **Despliegue:**
+  - variables nuevas en `deploy/compose.yaml`;
+  - `CONVERSA_TRUST_CF=1` en la variante con túnel, para que los límites usen la IP real de Cloudflare;
+  - `install-server.sh --set CLAVE=valor` con una lista de ajustes permitidos y valores validados.
+
+### Verificación
+
+- `npm test`: 65 pruebas aprobadas, 0 fallidas (9 nuevas en test/accounts.test.mjs).
+  - Registro con aviso y código; vinculación confirmada por número; aislamiento entre clientes y con el propietario.
+  - Separación de panel y app; inicio de sesión con límites y respuesta uniforme.
+  - Borrado completo con desvinculación; recuperación por WhatsApp; límite de cuentas.
+  - assetlinks; páginas legales sin acceso al código fuente; cuenta demo; conector con código, número ajeno y código caducado.
+- Navegador real:
+  - 18 comprobaciones del recorrido del cliente: bienvenida, aviso obligatorio, código, apertura al vincular, ajustes, salir y entrar, contraseña errónea, recuperación, eliminar cuenta y la política de privacidad pública;
+  - 62 comprobaciones del panel del propietario y 63 de la demo, sin regresiones.
+- Pendiente: probarlo con un número real en el servidor (código de WhatsApp real), revisión de seguridad independiente del cambio y publicación en Google Play (ver PUBLICAR-GOOGLE-PLAY.md).

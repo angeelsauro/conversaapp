@@ -88,7 +88,8 @@ const page=body
  .replace('<div class="shell">','<div class="demo-banner" role="note">Vista previa con datos ficticios. No conecta con WhatsApp ni envía mensajes.</div><div class="shell">')
  .replace('Entrar</button></form></section>','Entrar</button></form><p class="muted">Vista previa: escribe cualquier código.</p></section>')
  .replace('href="/api/export" download','href="/api/export"')
- .replaceAll('src="/icon.svg"',`src="${icon}"`);
+ .replaceAll('src="/icon.svg"',`src="${icon}"`)
+ .replaceAll('src="/icon-192.png"',`src="data:image/png;base64,${readFileSync(join(root,'public','icon-192.png')).toString('base64')}"`);
 for(const [label,text] of [['runtime',runtime],['app',read('public/app.js')]])if(/<\/script/i.test(text))throw new Error(label+' contains a closing script tag');
 const html=`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#123F3C">
 <title>Vista previa de Conversa</title>
