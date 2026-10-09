@@ -148,3 +148,9 @@ test('asset links can declare the admin app and the client app at once',async t=
  const links=await panel('GET','/.well-known/assetlinks.json');assert.equal(links.status,200);
  assert.deepEqual(links.json.map(s=>[s.target.package_name,s.target.sha256_cert_fingerprints]),[['com.andinamusic.conversa.admin',[fp]],['com.andinamusic.conversa',[fp]]]);
 });
+
+test('the admin app downloads only from the private panel host',async t=>{
+ const {api,panel}=await boot(t);
+ const r=await panel('GET','/descargas/conversa-admin.apk');assert.equal(r.status,200);assert.equal(r.headers['content-type'],'application/vnd.android.package-archive');assert.match(r.headers['content-disposition'],/Conversa-Admin\.apk/);
+ assert.equal((await api('GET','/descargas/conversa-admin.apk')).status,404,'never from the public app');
+});
