@@ -14,6 +14,23 @@ Desde 0.3.0, /api/state incluye hasta 2000 chats y `totalChats`. Cada chat lleva
 - GET /api/chat/messages?jid=…&before=…: historial de un solo chat (0.3.0). Devuelve {messages, more}: los 150 mensajes más recientes en orden cronológico; con `before` (milisegundos), los anteriores a esa marca. Une los alias PN/LID del contacto. jid debe ser un contacto directo; si no, 400. Hoy descifra todos los mensajes en cada consulta: revisar con volúmenes grandes.
 - GET /api/export: exportación de mensajes y chats. Contiene datos privados, nunca adjuntarla al paquete público.
 
+### Desde 0.4.0
+
+- **Datos nuevos en los mensajes:**
+  - `media`: {mimetype, size, seconds, ptt, name, width, height, thumb}. `thumb` es la miniatura JPEG que trae WhatsApp, en base64 y de 16 000 caracteres como máximo; se omite en /api/state y /api/messages. En /api/chat/messages, `media.available` indica si el archivo se puede abrir.
+  - `quote`: {id, text, kind, fromMe}.
+  - `reactions`: {me?, contact?}.
+  - El pie de una foto o un video va en `text`.
+- **Datos nuevos en los chats:** `photo` (versión de la foto de perfil), `rev` (cambia con reacciones y estados de envío) y `notifications` ({devices, preview}) en /api/state.
+- **GET /api/events:** flujo SSE. Envía `event: change` (agrupado cada 120 ms) cuando cambian mensajes, chats, ajustes o cola, y cuando cambia el estado de la conexión. Envía un ping cada 25 s y se cierra al cerrar o revocar la sesión. Admite 8 flujos a la vez como máximo.
+- **GET /api/media?id=:**
+  - Descarga el archivo de WhatsApp solo cuando se pide y lo guarda en memoria (LRU de 80 MB; 25 MB como máximo por archivo); nunca en disco.
+  - Admite rangos de bytes, necesarios para el audio y el video en Safari.
+  - Fotos, audios y videos de tipos conocidos se abren en el navegador. Cualquier otro tipo sale como `application/octet-stream` con `attachment`.
+  - Errores: 404 si no hay archivo o es de visualización única (estos nunca se guardan ni se descargan); 409 si WhatsApp está desconectado y el archivo no está en memoria; 413 si es demasiado grande; 502 si WhatsApp no lo entrega.
+- **GET /api/avatar?jid=:** foto de perfil pequeña ('preview'), guardada cifrada. El servidor la pide a WhatsApp en segundo plano, de una en una, empezando por los chats recientes, y la refresca a diario. Solo descarga URLs `https` de `*.whatsapp.net`, de 300 KB como máximo, en JPEG, PNG o WebP. Devuelve 404 si no hay foto.
+- **GET /api/push/key:** clave pública VAPID para `pushManager.subscribe`.
+
 ## Mutaciones autenticadas
 
 - POST /api/logout y /api/revoke-sessions.
@@ -22,6 +39,10 @@ Desde 0.3.0, /api/state incluye hasta 2000 chats y `totalChats`. Cada chat lleva
 - POST /api/bot/preview {text}: prueba privada; devuelve {text}, vacío si no hay coincidencia única en modo palabras clave. No envía a WhatsApp.
 - POST /api/chat/send {jid,text}: envío manual del propietario (0.3.0). Envía el texto tal cual, sin plantillas ni IA, hasta 4000 caracteres. Igual que una respuesta desde el teléfono, pausa el bot en ese chat y pone `unread` a 0. Devuelve {id, status}: `sent`, o `uncertain` si WhatsApp no confirma en 10 s. En ese caso no se reintenta, para no duplicar el mensaje. Requiere WhatsApp conectado y un chat no borrado.
 - POST /api/chat/read {jid}: marca el chat como leído (`unread` a 0). No envía confirmaciones de lectura a WhatsApp.
+- POST /api/chat/send acepta `quoteId` (0.4.0): el id del mensaje al que se responde, que debe ser del mismo chat y no de visualización única. WhatsApp muestra la cita.
+- POST /api/chat/react {id, emoji} (0.4.0): solo 👍 ❤️ 😂 😮 😢 🙏; un emoji vacío quita la reacción. Se envía a WhatsApp y se guarda en `reactions.me`.
+- POST /api/presence {visible} (0.4.0): el panel avisa si está en pantalla. Mientras alguno lo esté (75 s de margen), no se envían notificaciones push.
+- POST /api/push/subscribe {subscription} (0.4.0): solo servicios push conocidos (FCM, Mozilla, Apple, Windows) y claves válidas; como máximo 10 dispositivos. Además: /api/push/unsubscribe {endpoint}, /api/push/settings {preview} (false oculta nombre y texto) y /api/push/test (devuelve {sent, devices}). Un servicio que responde 404 o 410 hace que se borre esa suscripción.
 - POST /api/chat/review {jid,enabled}: revisión/pausa, con prohibición de habilitar chats excluidos.
 - POST /api/history/more {jid}: solicita historial usando un mensaje de referencia disponible. jid debe ser un contacto directo (@s.whatsapp.net o @lid).
 - POST /api/chat/delete {jid}: borra mensajes/cola del contacto y mantiene exclusión mínima. Tratar como operación destructiva. jid debe ser un contacto directo; si no, 400 sin cambios.

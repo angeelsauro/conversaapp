@@ -1,13 +1,30 @@
 export const direct = jid => typeof jid==='string' && /@(s\.whatsapp\.net|lid)$/.test(jid);
+const MEDIA=[['imageMessage','image'],['videoMessage','video'],['audioMessage','audio'],['documentMessage','document'],['stickerMessage','sticker']];
+const b64=v=>v instanceof Uint8Array?Buffer.from(v).toString('base64'):v?.type==='Buffer'&&Array.isArray(v.data)?Buffer.from(v.data).toString('base64'):typeof v==='string'?v:'';
+const num=v=>typeof v==='number'?v:v&&typeof v.low==='number'?(v.high>>>0)*4294967296+(v.low>>>0):Number(v)||0;
+// Ephemeral and document-with-caption containers are opened; view-once content is flagged and never unwrapped.
+function unwrap(message){let content=message,viewOnce=false;for(let i=0;i<4;i++){if(content?.viewOnceMessage||content?.viewOnceMessageV2||content?.viewOnceMessageV2Extension||content?.imageMessage?.viewOnce||content?.videoMessage?.viewOnce||content?.audioMessage?.viewOnce){viewOnce=true;break;}const inner=content?.ephemeralMessage?.message||content?.documentWithCaptionMessage?.message;if(!inner)break;content=inner;}return {content,viewOnce};}
+const mediaOf=content=>{const [type,kind]=MEDIA.find(([t])=>content?.[t])||[];return type?{type,kind,media:content[type]}:{};};
 export function messageRecord(raw) {
   const jid=raw.key?.remoteJid, timestamp=Number(raw.messageTimestamp)*1000;
   if(!direct(jid)||!raw.key?.id||!Number.isFinite(timestamp)||timestamp<=0) return null;
-  let content=raw.message,viewOnce=false;
-  for(let i=0;i<4;i++){if(content?.viewOnceMessage||content?.viewOnceMessageV2||content?.viewOnceMessageV2Extension||content?.imageMessage?.viewOnce||content?.videoMessage?.viewOnce||content?.audioMessage?.viewOnce){viewOnce=true;break;}const inner=content?.ephemeralMessage?.message;if(!inner)break;content=inner;}
+  const {content,viewOnce}=unwrap(raw.message);
   if(!content||content.protocolMessage||content.reactionMessage) return null;
-  const text=viewOnce?'':content.conversation||content.extendedTextMessage?.text||'';
-  const kind=viewOnce?'view_once':text?'text':content.imageMessage?'image':content.audioMessage?'audio':content.videoMessage?'video':content.documentMessage?'document':'other';
-  return {id:`${jid}:${raw.key.id}`,key:raw.key,jid,name:(raw.pushName||'Contacto').slice(0,100),text:text.slice(0,8000),kind,viewOnce,timestamp,fromMe:!!raw.key.fromMe};
+  const {kind:mediaKind,media}=viewOnce?{}:mediaOf(content);
+  const text=viewOnce?'':content.conversation||content.extendedTextMessage?.text||media?.caption||'';
+  const kind=viewOnce?'view_once':mediaKind||(text?'text':'other');
+  const record={id:`${jid}:${raw.key.id}`,key:raw.key,jid,name:(raw.pushName||'Contacto').slice(0,100),text:String(text).slice(0,8000),kind,viewOnce,timestamp,fromMe:!!raw.key.fromMe};
+  // Media metadata and WhatsApp's inline preview only; the file itself is fetched on demand and never stored.
+  if(media){record.media={mimetype:String(media.mimetype||'').slice(0,100),size:num(media.fileLength),seconds:num(media.seconds)||undefined,ptt:!!media.ptt||undefined,name:media.fileName?String(media.fileName).slice(0,200):undefined,width:num(media.width)||undefined,height:num(media.height)||undefined};const thumb=b64(media.jpegThumbnail);if(thumb&&thumb.length<=16000)record.media.thumb=thumb;}
+  const ctx=(content.extendedTextMessage||media)?.contextInfo;
+  if(ctx?.stanzaId&&ctx.quotedMessage){const q=unwrap(ctx.quotedMessage),qm=q.viewOnce?{}:mediaOf(q.content);record.quote={id:String(ctx.stanzaId).slice(0,128),text:q.viewOnce?'':String(q.content?.conversation||q.content?.extendedTextMessage?.text||qm.media?.caption||'').slice(0,300),kind:q.viewOnce?'view_once':qm.kind||'text',participant:typeof ctx.participant==='string'?ctx.participant:undefined};}
+  return record;
+}
+// What WhatsApp needs to download a file again later (keys, path, size). Never for view-once content.
+export function mediaSource(raw) {
+  const {content,viewOnce}=unwrap(raw.message);if(viewOnce)return null;
+  const {type,media:m}=mediaOf(content);if(!m?.mediaKey||!(m.directPath||m.url))return null;
+  return {key:{remoteJid:raw.key.remoteJid,id:raw.key.id,fromMe:!!raw.key.fromMe},type,message:{url:m.url||undefined,directPath:m.directPath||undefined,mediaKey:b64(m.mediaKey),fileEncSha256:b64(m.fileEncSha256)||undefined,fileSha256:b64(m.fileSha256)||undefined,fileLength:num(m.fileLength),mimetype:m.mimetype||undefined,mediaKeyTimestamp:num(m.mediaKeyTimestamp)||undefined}};
 }
 
 export const preview = m => ({text:(m.text||'').slice(0,200),kind:m.kind,fromMe:!!m.fromMe,bot:!!m.bot,timestamp:m.timestamp});
@@ -40,6 +57,7 @@ export class History {
       const ids=[raw.key.remoteJid,raw.key.remoteJidAlt];
       this.map({pn:ids.find(x=>x?.endsWith('@s.whatsapp.net')),lid:ids.find(x=>x?.endsWith('@lid'))});
     }
+    const reaction=unwrap(raw.message).content?.reactionMessage;if(reaction)return this.react(raw,reaction,source);
     const msg=messageRecord(raw);if(!msg)return;
     const existing=this.store.get(this.w,'messages',msg.id),chat=this.chat(msg.jid),cutoff=this.meta().firstLinkedAt;
     if(chat.deleted)return;
@@ -60,7 +78,11 @@ export class History {
     if(existing){if(!existing.key)this.store.put(this.w,'messages',msg.id,{...existing,key:msg.key,fromMe:msg.fromMe});return existing;}
     // The same message can arrive again under the contact's other address (PN/LID): keep a single copy.
     if(seen&&seen.first!==msg.id){const first=this.store.get(this.w,'messages',seen.first);if(first)return first;}
+    // A quoted message is attributed from the stored original when we have it.
+    if(msg.quote){const q=this.store.get(this.w,'seen',msg.quote.id),original=q&&this.store.get(this.w,'messages',q.first);msg.quote.fromMe=original?!!original.fromMe:!!msg.quote.participant&&this.canonical(msg.quote.participant)!==chat.jid;delete msg.quote.participant;}
     msg.source=source;this.store.put(this.w,'messages',msg.id,msg);
+    const file=mediaSource(raw);if(file)this.store.put(this.w,'media',msg.id,file);
+    if(!seen&&source==='live'&&!msg.fromMe)try{this.onIncoming?.(msg,chat);}catch{}
     // History is view-only. Only events received after explicit activation can queue.
     const bot=this.store.get(this.w,'settings','bot');
     const test=this.store.get(this.w,'settings','keyword-test');
@@ -69,6 +91,19 @@ export class History {
       this.store.put(this.w,'queue',msg.id,{id:msg.id,jid:msg.jid,timestamp:msg.timestamp,state:'pending',attempts:0,nextAt:Date.now()});
     }
     return msg;
+  }
+  // A reaction updates the message it points to (one per side, like WhatsApp); an empty reaction removes it.
+  react(raw,r,source) {
+    const id=r.key?.id;if(!id)return;const seen=this.store.get(this.w,'seen',id);
+    const target=(seen&&this.store.get(this.w,'messages',seen.first))||this.store.get(this.w,'messages',`${this.canonical(r.key.remoteJid||raw.key?.remoteJid)}:${id}`);if(!target)return;
+    const who=raw.key?.fromMe?'me':'contact',emoji=String(r.text||'').slice(0,16);
+    target.reactions={...target.reactions};if(emoji)target.reactions[who]=emoji;else delete target.reactions[who];
+    this.store.put(this.w,'messages',target.id,target);
+    // rev tells an open panel to reload this chat even though its last message did not change.
+    const chat=this.chat(target.jid);if(chat.deleted)return target;chat.rev=Date.now();
+    if(emoji&&who==='contact'&&source==='live'){const timestamp=Number(raw.messageTimestamp)*1000||Date.now();if(timestamp>=(chat.last?.timestamp||0))chat.last={text:`Reaccionó ${emoji} a «${(target.text||'').slice(0,60)}»`,kind:'reaction',fromMe:false,bot:false,timestamp};}
+    this.save(chat);
+    return target;
   }
   // One-time fill of chat.last for chats stored before 0.3 (their messages are already there).
   backfillLast() {

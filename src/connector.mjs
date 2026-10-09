@@ -1,4 +1,4 @@
-import makeWASocket, { initAuthCreds, BufferJSON, proto, DisconnectReason, makeCacheableSignalKeyStore } from '@whiskeysockets/baileys';
+import makeWASocket, { initAuthCreds, BufferJSON, proto, DisconnectReason, makeCacheableSignalKeyStore, downloadMediaMessage } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
 import {History,messageRecord} from './history.mjs';
@@ -77,5 +77,9 @@ export class Connector {
   }
  }
  pause(persist=true){if(persist)this.desired(false);++this.epoch;clearTimeout(this.retryTimer);clearTimeout(this.qrTimer);this.socket?.end(new Error('Paused'));Object.assign(this,{socket:null,qr:null,qrExpiresAt:null,status:'paused',note:'Recepción y respuestas pausadas.'});}
+ // Files are downloaded from WhatsApp only when the owner opens them; the caller keeps them in memory, never on disk.
+ async downloadMedia(source){const sock=this.socket;if(this.status!=='connected'||!sock)throw new Error('OFFLINE');const bytes=v=>v?Buffer.from(v,'base64'):undefined,m=source.message;
+  return downloadMediaMessage({key:source.key,message:{[source.type]:{...m,mediaKey:bytes(m.mediaKey),fileEncSha256:bytes(m.fileEncSha256),fileSha256:bytes(m.fileSha256)}}},'buffer',{},{logger,reuploadRequest:msg=>sock.updateMediaMessage(msg)});}
+ async profilePicture(jid){if(this.status!=='connected'||!this.socket?.profilePictureUrl)throw new Error('OFFLINE');return this.socket.profilePictureUrl(jid,'preview',8000);}
  async disconnect(){const sock=this.socket;let timer;try{if(sock&&this.status==='connected')await Promise.race([sock.logout(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),8000);})]);else if(this.store.get(this.workspace,'auth','creds'))throw new Error('offline');}catch{throw new Error('No se pudo desvincular. Reanuda o elimina Conversa en Dispositivos vinculados del teléfono.');}finally{clearTimeout(timer);}this.pause();this.store.clear(this.workspace,'auth');this.identity=null;this.status='disconnected';this.note='Sesión desvinculada; se conserva la exclusión de chats antiguos.';}
 }

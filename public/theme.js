@@ -1,0 +1,2 @@
+// Runs before the page paints, so a dark device never flashes the light theme. Choice: auto (device), dark or light.
+(()=>{let choice='auto';try{choice=localStorage.getItem('conversa-theme')||'auto';}catch{}const dark=choice==='dark'||choice==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches,root=document.documentElement;root.dataset.theme=dark?'dark':'light';root.dataset.themeChoice=choice;})();

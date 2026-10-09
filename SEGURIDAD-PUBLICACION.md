@@ -64,6 +64,24 @@ Alternativa sin Cloudflare: el `compose.yaml` original con Caddy y `CONVERSA_ALL
   - Los chats anteriores quedan excluidos.
   - El bot solo responde a chats revisados, una vez por chat, y STOP lo detiene.
 
+### Novedades de 0.4.0 y su protección
+
+- **Fotos, audios y documentos:**
+  - Se descargan de WhatsApp solo cuando los abres y quedan en la memoria del servidor (80 MB como máximo), nunca en disco ni en las copias de seguridad.
+  - Lo único guardado (cifrado) son las claves para volver a pedirlos y la miniatura que ya trae el mensaje.
+  - La visualización única nunca se guarda ni se descarga.
+  - Los documentos y los tipos desconocidos se descargan como archivo y nunca se abren dentro del panel, para que un HTML o SVG malicioso no pueda ejecutarse.
+- **Fotos de perfil:**
+  - El servidor solo descarga direcciones `https` de `*.whatsapp.net`, imágenes de hasta 300 KB, de una en una.
+  - Se guardan cifradas y se renuevan a diario.
+- **Notificaciones push:**
+  - El contenido va cifrado de extremo a extremo hasta tu dispositivo (RFC 8291). Google o Apple solo transportan bytes que no pueden leer.
+  - Puedes ocultar el nombre y el texto con «Mostrar nombre y texto».
+  - Solo se aceptan servicios push conocidos, para que nadie use el servidor como trampolín hacia otras direcciones.
+  - No se envían mientras el panel está en pantalla.
+- **Instalación como app:** el service worker solo muestra notificaciones. No guarda páginas ni datos, así que cada apertura pasa por Cloudflare Access y por tu sesión.
+- **Tiempo real (SSE):** necesita sesión, admite 8 flujos como máximo y se corta al cerrar o revocar la sesión.
+
 ## 4. Riesgos que quedan para la prueba publicada
 
 | Riesgo | Qué hacer |
@@ -74,6 +92,7 @@ Alternativa sin Cloudflare: el `compose.yaml` original con Caddy y `CONVERSA_ALL
 | Compromiso del servidor: la clave de cifrado está en el mismo servidor | Servidor dedicado, actualizado, SSH con clave y sin puertos abiertos. Copias cifradas fuera del servidor y la clave guardada aparte. |
 | Pérdida de datos o de la sesión | Copia diaria con `scripts/backup.mjs` y una restauración probada (DEPLOY.md). |
 | Dependencia de Baileys en versión candidata (rc) | Versión fijada con lockfile. Revisar cada actualización antes de instalarla. |
+| Notificaciones en la pantalla bloqueada (nombre y texto visibles) | Desactiva «Mostrar nombre y texto» en Conexión → Notificaciones si otras personas ven tu teléfono. |
 | Sin auditoría externa | Contratar una revisión de seguridad y privacidad antes de abrirlo a terceros. |
 
 Para repetir en el servidor la prueba con PRUEBA, añade temporalmente `CONVERSA_TEST_ENDPOINTS: "on"` al servicio `conversa`, recrea el contenedor y quítalo al terminar. También puedes usar el flujo normal con una respuesta guardada y su palabra clave.

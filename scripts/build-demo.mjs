@@ -30,8 +30,11 @@ class Store{
 ${module('src/history.mjs')}
 ${module('src/bot.mjs')}
 ${module('scripts/demo-data.mjs')}
-const store=new Store(),connector=demoConnector(store,{History,qr:${JSON.stringify(qr)}}),bot=new Bot(store,connector);
-seedDemo({store,history:connector.history,bot});connector.resume();bot.start();
+${module('scripts/demo-media.mjs')}
+const store=new Store(),connector=demoConnector(store,{History,qr:${JSON.stringify(qr)},media:DEMO_MEDIA}),bot=new Bot(store,connector);
+seedDemo({store,history:connector.history,bot,media:DEMO_MEDIA});connector.resume();bot.start();
+// Without a server, images and audio cannot load from /api/media: the panel asks this hook for the fictional files.
+window.conversaDemoMedia=id=>{const name=store.get('owner','media',id)?.message.directPath?.split('/').pop(),type={photo:'image/jpeg',voice:'audio/wav'}[name];return type&&DEMO_MEDIA[name]?'data:'+type+';base64,'+DEMO_MEDIA[name]:null;};
 let authed=true;
 const json=(status,obj)=>new Response(JSON.stringify(obj),{status,headers:{'Content-Type':'application/json; charset=utf-8'}});
 const withConversation=m=>({...m,conversationJid:connector.history.canonical(m.jid)});
@@ -39,8 +42,8 @@ const withConversation=m=>({...m,conversationJid:connector.history.canonical(m.j
 async function route(method,path,query,input){
  if(method==='GET'){
   if(!authed)return json(401,{error:'Entra con tu acceso privado.'});
-  if(path==='/api/state')return json(200,{connection:connector.snapshot(),messages:store.list('owner','messages',100).map(withConversation),totalMessages:store.count('owner','messages'),chats:store.list('owner','chats',2000),totalChats:store.count('owner','chats'),bot:{...bot.config(),aiAvailable:false},queue:store.list('owner','queue',100).map(j=>({state:j.state,timestamp:j.timestamp})),checkedAt:Date.now(),workspace:{name:'Mi espacio',mode:'Vista previa'}});
-  if(path==='/api/chat/messages'){const jid=query.get('jid');if(!direct(jid))return json(400,{error:'Chat inválido.'});const target=connector.history.canonical(jid),before=Number(query.get('before'))||Infinity;const all=store.list('owner','messages',-1).filter(m=>m.timestamp<before&&connector.history.canonical(m.jid)===target).sort((a,b)=>a.timestamp-b.timestamp);return json(200,{messages:all.slice(-150).map(m=>({...m,conversationJid:target})),more:all.length>150});}
+  if(path==='/api/state')return json(200,{connection:connector.snapshot(),messages:store.list('owner','messages',100).map(withConversation),totalMessages:store.count('owner','messages'),chats:store.list('owner','chats',2000),totalChats:store.count('owner','chats'),bot:{...bot.config(),aiAvailable:false},queue:store.list('owner','queue',100).map(j=>({state:j.state,timestamp:j.timestamp})),checkedAt:Date.now(),workspace:{name:'Mi espacio',mode:'Vista previa'},notifications:{devices:0,preview:true}});
+  if(path==='/api/chat/messages'){const jid=query.get('jid');if(!direct(jid))return json(400,{error:'Chat inválido.'});const target=connector.history.canonical(jid),before=Number(query.get('before'))||Infinity;const all=store.list('owner','messages',-1).filter(m=>m.timestamp<before&&connector.history.canonical(m.jid)===target).sort((a,b)=>a.timestamp-b.timestamp);return json(200,{messages:all.slice(-150).map(m=>({...m,conversationJid:target,...(m.media?{media:{...m.media,available:!!store.get('owner','media',m.id)}}:{})})),more:all.length>150});}
   if(path==='/api/messages'){const offset=Math.max(0,Math.min(10000000,Number(query.get('offset'))||0));return json(200,{messages:store.list('owner','messages',100,offset).map(withConversation),total:store.count('owner','messages')});}
   return json(404,{error:'Ruta no encontrada.'});
  }
@@ -53,7 +56,9 @@ async function route(method,path,query,input){
   else if(path==='/api/disconnect')await connector.disconnect();
   else if(path==='/api/bot/config')return json(200,{bot:bot.configure(input)});
   else if(path==='/api/bot/preview')return json(200,{text:await bot.preview(input.text)});
-  else if(path==='/api/chat/send'){if(!direct(input.jid))throw new Error('Chat inválido');if(typeof input.text!=='string'||!input.text.trim()||input.text.length>4000)throw new Error('Escribe un mensaje de hasta 4000 caracteres.');return json(200,await bot.sendManual(input.jid,input.text));}
+  else if(path==='/api/chat/send'){if(!direct(input.jid))throw new Error('Chat inválido');if(typeof input.text!=='string'||!input.text.trim()||input.text.length>4000)throw new Error('Escribe un mensaje de hasta 4000 caracteres.');return json(200,await bot.sendManual(input.jid,input.text,{quoteId:input.quoteId}));}
+  else if(path==='/api/chat/react'){if(typeof input.id!=='string'||!['👍','❤️','😂','😮','😢','🙏',''].includes(input.emoji))throw new Error('Reacción no disponible.');return json(200,await bot.react(input.id,input.emoji));}
+  else if(path==='/api/presence'){}
   else if(path==='/api/chat/read'){if(!direct(input.jid))throw new Error('Chat inválido');const chat=connector.history.chat(input.jid);if(chat.unread){chat.unread=0;connector.history.save(chat);}}
   else if(path==='/api/chat/review'){if(typeof input.enabled!=='boolean')throw new Error('Selección inválida');connector.history.review(input.jid,input.enabled);}
   else if(path==='/api/history/more'){if(!direct(input.jid))throw new Error('Chat inválido');if(connector.status!=='connected')throw new Error('Conecta WhatsApp primero');}
@@ -64,7 +69,7 @@ async function route(method,path,query,input){
    for(const j of store.list('owner','queue',-1))if(connector.history.canonical(j.jid)===chat.jid)store.remove('owner','queue',j.id);
   }else return json(404,{error:'Ruta no encontrada.'});
   return json(200,{ok:true});
- }catch(error){return json(400,{error:['/api/disconnect','/api/bot/config','/api/chat/review','/api/bot/preview','/api/chat/send'].includes(path)?error.message:'No se pudo completar la acción.'});}
+ }catch(error){return json(400,{error:['/api/disconnect','/api/bot/config','/api/chat/review','/api/bot/preview','/api/chat/send','/api/chat/react'].includes(path)?error.message:'No se pudo completar la acción.'});}
 }
 const realFetch=window.fetch.bind(window);
 window.fetch=async(resource,init={})=>{

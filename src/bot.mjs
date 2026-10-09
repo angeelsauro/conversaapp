@@ -1,5 +1,6 @@
 import {randomBytes} from 'node:crypto';
 import {preview} from './history.mjs';
+const QUOTE_LABELS={image:'📷 Foto',video:'🎥 Video',audio:'🎤 Audio',document:'📄 Documento',sticker:'Sticker'};
 export class Bot {
  constructor(store,connector,{respond}={}) {this.store=store;this.c=connector;this.w=connector.workspace||'owner';this.respond=respond;this.running=false;
   for(const job of store.list(this.w,'queue',-1))if(['generating','sending'].includes(job.state)){job.state=job.state==='sending'?'uncertain':'pending';store.put(this.w,'queue',job.id,job);}
@@ -33,17 +34,30 @@ export class Bot {
   this.store.put(this.w,'queue',key,job);this.markSent(`${chat.jid}:${id}`,job.state);return {state:job.state};
  }
  // Owner reply typed in the panel: sent as-is, and like a reply from the phone it pauses the bot in that chat.
- async sendManual(jid,text){
+ async sendManual(jid,text,{quoteId}={}){
   const chat=this.c.history.chat(jid);
   if(chat.deleted)throw new Error('Este chat fue borrado.');
+  const quoted=quoteId?this.store.get(this.w,'messages',quoteId):null;
+  if(quoteId&&(!quoted?.key||quoted.viewOnce||this.c.history.canonical(quoted.jid)!==chat.jid))throw new Error('No se encontró el mensaje citado.');
   if(this.c.status!=='connected'||!this.c.socket)throw new Error('Conecta WhatsApp primero.');
-  const id=randomBytes(16).toString('hex').toUpperCase(),timestamp=Date.now();
-  const record={id:`${chat.jid}:${id}`,key:{remoteJid:chat.jid,id,fromMe:true},jid:chat.jid,name:'Tú',text,kind:'text',timestamp,fromMe:true,manual:true,source:'live',status:'sending'};
+  const id=randomBytes(16).toString('hex').toUpperCase(),timestamp=Date.now(),quote=quoted&&{id:quoted.key.id,text:(quoted.text||'').slice(0,300),kind:quoted.kind,fromMe:!!quoted.fromMe};
+  const record={id:`${chat.jid}:${id}`,key:{remoteJid:chat.jid,id,fromMe:true},jid:chat.jid,name:'Tú',text,kind:'text',timestamp,fromMe:true,manual:true,source:'live',status:'sending',...(quote?{quote}:{})};
   this.store.transaction(()=>{this.store.put(this.w,'messages',record.id,record);this.store.put(this.w,'seen',id,{first:record.id});Object.assign(chat,{enabled:false,humanAt:timestamp,unread:0,last:preview(record),latest:Math.max(chat.latest||0,timestamp)});this.c.history.save(chat);});
-  let timer,state;try{const sent=await Promise.race([this.c.socket.sendMessage(chat.jid,{text},{messageId:id}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),10000);})]);state=sent?'sent':'uncertain';}catch{state='uncertain';}finally{clearTimeout(timer);}
+  // The quote travels as text: WhatsApp shows it above the reply and links it to the original by its id.
+  const options=quoted?{messageId:id,quoted:{key:quoted.key,message:{conversation:quoted.text||QUOTE_LABELS[quoted.kind]||'Mensaje'}}}:{messageId:id};
+  let timer,state;try{const sent=await Promise.race([this.c.socket.sendMessage(chat.jid,{text},options),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),10000);})]);state=sent?'sent':'uncertain';}catch{state='uncertain';}finally{clearTimeout(timer);}
   this.markSent(record.id,state);return {id:record.id,status:state};
  }
- markSent(messageId,state){const m=this.store.get(this.w,'messages',messageId);if(m){m.status=state==='sent'?'sent':'uncertain';this.store.put(this.w,'messages',messageId,m);}}
+ async react(messageId,emoji){
+  const m=this.store.get(this.w,'messages',messageId);if(!m?.key||m.viewOnce)throw new Error('Mensaje no encontrado.');
+  if(this.c.history.chat(m.jid).deleted)throw new Error('Este chat fue borrado.');
+  if(this.c.status!=='connected'||!this.c.socket)throw new Error('Conecta WhatsApp primero.');
+  let timer;try{await Promise.race([this.c.socket.sendMessage(m.key.remoteJid||m.jid,{react:{text:emoji,key:m.key}}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),10000);})]);}catch{throw new Error('WhatsApp no confirmó la reacción. Inténtalo de nuevo.');}finally{clearTimeout(timer);}
+  const fresh=this.store.get(this.w,'messages',messageId)||m;fresh.reactions={...fresh.reactions};if(emoji)fresh.reactions.me=emoji;else delete fresh.reactions.me;this.store.put(this.w,'messages',messageId,fresh);this.touch(fresh.jid);return {reactions:fresh.reactions};
+ }
+ markSent(messageId,state){const m=this.store.get(this.w,'messages',messageId);if(m){m.status=state==='sent'?'sent':'uncertain';this.store.put(this.w,'messages',messageId,m);this.touch(m.jid);}}
+ // An open panel reloads the chat when rev changes (delivery state, reactions).
+ touch(jid){const chat=this.c.history.chat(jid);if(!chat.deleted){chat.rev=Date.now();this.c.history.save(chat);}}
  armKeywordTest(jid){if(typeof jid!=='string'||!/^\d+@s\.whatsapp\.net$/.test(jid))throw new Error('Contacto inválido');const chat=this.c.history.chat(jid);if(!chat.earliest||chat.deleted||chat.optOut||chat.handoffReason==='view-once')throw new Error('Contacto no disponible para prueba');const now=Date.now(),test={id:randomBytes(16).toString('hex'),jid:chat.jid,armedAt:now,expiresAt:now+600000,text:'Mensaje de prueba recibido correctamente.'};this.store.put(this.w,'settings','keyword-test',test);return {expiresAt:test.expiresAt,keyword:'PRUEBA'};}
  start(){this.prune();this.timer=setInterval(()=>this.tick().catch(()=>{this.lastError='QUEUE_FAILURE';}),1000);this.timer.unref?.();this.pruneTimer=setInterval(()=>{try{this.prune();}catch{}},3600000);this.pruneTimer.unref?.();}
  stop(){clearInterval(this.timer);clearInterval(this.pruneTimer);this.stopped=true;}

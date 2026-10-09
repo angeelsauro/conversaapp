@@ -149,3 +149,35 @@ Fase 1 de la auditoría de interfaz: el panel funciona como un chat de mensajer�
 - Pendiente en el servidor real:
   - enviar un mensaje desde el panel y comprobar que llega una sola vez y que el panel muestra su marca;
   - reiniciar el VPS (`reboot`) y comprobar que WhatsApp vuelve a «Conectado» sin QR nuevo.
+
+## Versión 0.4.0 (9 de octubre de 2026): el efecto «wow»
+
+Objetivo: que el panel se sienta como una app de mensajería moderna (tiempo real, archivos dentro del chat, fotos de perfil, modo oscuro, app instalable con notificaciones), sin perder las protecciones de privacidad.
+
+### Cambios
+
+- **Tiempo real:** un flujo SSE (/api/events) avisa al panel de cada cambio. Los mensajes aparecen al instante y la consulta periódica queda como respaldo cada 30 s. La demo de un solo archivo sigue consultando cada 3 s.
+- **Archivos dentro del chat:**
+  - **Fotos y stickers:** se ve la miniatura de WhatsApp al instante, desenfocada, y el archivo real aparece encima con un fundido. Al tocarlas se abren a pantalla completa con botón de descarga.
+  - **Notas de voz:** reproductor con forma de onda que se puede tocar o mover con las flechas, y velocidad 1×, 1,5× o 2×.
+  - **Videos y documentos:** los videos se ven en el visor; los documentos se descargan, con nombre y tamaño.
+  - Se descargan bajo demanda y solo en memoria. La visualización única sigue sin abrirse nunca.
+- **Fotos de perfil** de WhatsApp sobre las iniciales.
+- **Responder citando:** en PC al pasar el ratón; en móvil con un toque. La cita se ve en la burbuja y, al tocarla, el chat salta al mensaje original.
+- **Reacciones** (👍 ❤️ 😂 😮 😢 🙏), enviadas a WhatsApp. Las del contacto se ven en tu burbuja y en la lista («Reaccionó ❤️ a…»).
+- **Selector de emojis** en el campo de escritura.
+- **Modo oscuro:** automático según el dispositivo, o fijo con el botón junto al estado de conexión. Se aplica antes de pintar la página, sin destello blanco.
+- **App instalable (PWA):** icono propio, pantalla completa y notificaciones push cifradas (VAPID + aes128gcm, sin dependencias). Al tocar la notificación se abre el chat. Opción para ocultar nombre y texto.
+- **Fluidez:** al redibujar el chat se reutilizan las burbujas que no cambian, así que una nota de voz no se corta al llegar un mensaje y las fotos no parpadean. El chat abierto también se recarga cuando cambian reacciones o estados de envío (`rev`).
+
+### Verificación de esta versión
+
+- `npm test`: 48 pruebas aprobadas, 0 fallidas.
+  - 5 en test/push.test.mjs: incluye el vector de RFC 8291, que coincide byte a byte.
+  - 9 en test/wow.test.mjs: pie, miniatura y origen del archivo; nada de visualización única; citas y reacciones; SSE más allá del tiempo de petición; rangos de bytes, caché y descargas como adjunto; fotos de perfil solo de WhatsApp; push con presencia, modo privado y suscripciones caducadas; reacción y respuesta citada; archivos PWA.
+- Navegador real (Chromium/Playwright): 51 comprobaciones contra `npm run preview` y 52 contra `dist/conversa-demo.html`. Incluyen foto que carga sobre su miniatura, nota de voz que suena, visor, reacción enviada y mostrada, respuesta con cita, emoji, SSE conectado, tema oscuro manual y automático, herramientas por toque en móvil, sin desplazamiento horizontal y sin errores de JavaScript.
+- Revisión independiente de seguridad y código del diff: ver «Revisión de 0.4.0» más abajo.
+- Pendiente en el servidor real:
+  - notificación en Android y en iPhone (icono instalado);
+  - abrir una foto y un audio reales;
+  - comprobar que una nota de voz de WhatsApp (Ogg/Opus) suena en iPhone; si Safari no la reproduce, el panel ofrece descargarla.

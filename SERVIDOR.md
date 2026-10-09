@@ -71,6 +71,13 @@ Solo se desvincula en estos casos:
 
 **Pausar recepción** también se mantiene tras un reinicio, porque lo pediste tú. Para volver, pulsa **Reanudar conexión**.
 
+## Instalar Conversa como app y recibir notificaciones
+
+- **Android (Chrome):** abre el panel, ve a **Conexión** → **Notificaciones y app** → **Instalar Conversa** (o en el menú ⋮ de Chrome, **Instalar app**). Después pulsa **Activar notificaciones** y acepta el permiso.
+- **iPhone (iOS 16.4 o posterior):** abre el panel en **Safari** → **Compartir** → **Añadir a pantalla de inicio**. Abre Conversa desde ese icono y pulsa **Activar notificaciones**. En iPhone las notificaciones solo funcionan así, desde el icono.
+- **PC:** Chrome o Edge muestran un botón de instalar en la barra de direcciones. Las notificaciones se activan igual.
+- Pulsa **Enviar una prueba** para comprobarlo. Si Conversa está en pantalla, no se envían notificaciones, porque ya ves el mensaje.
+
 ## Actualizar o revisar
 
 - **Actualizar:** vuelve a pegar la misma línea del paso 5, con un token de GitHub vigente. Se conservan los datos, las claves y la sesión de WhatsApp.
