@@ -24,7 +24,10 @@ main() { # Everything runs inside a function, so bash has read the whole script 
   local new_token=""; [ "${1:-}" = "--token" ] && new_token=1
   if [ ! -f "$DIR/deploy/.env" ]; then ask CONVERSA_DOMAIN 'Subdominio del panel (ej. panel-7k2q.tudominio.com): '; fi
   if [ -n "$new_token" ] || [ ! -f "$DIR/deploy/.env" ] || ! grep -q '^CLOUDFLARE_TUNNEL_TOKEN=.' "$DIR/deploy/.env"; then
-    ask CLOUDFLARE_TUNNEL_TOKEN 'Token del túnel de Cloudflare: ' secret
+    ask CLOUDFLARE_TUNNEL_TOKEN 'Token del túnel de Cloudflare (o el comando completo de Cloudflare): ' secret
+    # Accept the whole "docker run ... --token eyJ..." command too: keep only the token, which is base64 JSON starting with eyJ.
+    CLOUDFLARE_TUNNEL_TOKEN=$(printf '%s' "$CLOUDFLARE_TUNNEL_TOKEN" | sed 's/--token//' | grep -oE 'eyJ[A-Za-z0-9_+/=-]{40,}' | head -n1 || true)
+    printf '%s' "$CLOUDFLARE_TUNNEL_TOKEN" | base64 -d 2>/dev/null | grep -q '"t"' || { echo "Eso no parece un token de túnel de Cloudflare (empieza por eyJ). Vuelve a copiarlo."; exit 1; }
   fi
   [ -n "${CONVERSA_SOURCE_DIR:-}" ] || ask GH_TOKEN 'Token de GitHub (solo lectura): ' secret
 
