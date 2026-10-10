@@ -626,3 +626,13 @@ body[data-page=inbox] main>header{justify-content:flex-end;margin-bottom:14px}
 .pin-fields{display:flex;gap:8px;flex-wrap:wrap}
 .pin-fields input{flex:1;min-width:160px;font-size:16px;min-height:46px;border-radius:12px;letter-spacing:3px}
 .pin-row:not([hidden])+.owner-tools{margin-top:10px}
+.phone-icon{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.phone-icon h3{margin:0 0 4px;font-size:15px;color:var(--ink)}
+.phone-icon p{margin:0 0 12px}
+.phone-icon .phone-icon-opt{display:flex;flex-direction:column;align-items:center;gap:6px;background:transparent;padding:8px 4px;min-height:0;border-radius:12px;width:72px}
+.phone-icon .phone-icon-opt img{width:48px;height:48px;border-radius:12px}
+.phone-icon .phone-icon-opt span{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:68px}
+.phone-icon .phone-icon-opt:hover{background:#EAF4EE}
+[data-theme=dark] .phone-icon .phone-icon-opt:hover{background:#1A2E2A}
+.phone-icon{display:flex;flex-wrap:wrap;gap:6px}
+.phone-icon h3,.phone-icon p{flex-basis:100%}

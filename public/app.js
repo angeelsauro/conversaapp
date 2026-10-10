@@ -78,6 +78,9 @@ const TAB=Math.random().toString(36).slice(2,12);
 // keepalive: the «hidden» notice still leaves when a phone suspends the page right away.
 function presence(){if(LIVE&&online)api('presence',{visible:!document.hidden,tab:TAB},{keepalive:true}).catch(()=>{});}
 async function loginFromLink(){const params=new URLSearchParams(location.hash.slice(1)),token=params.get('access'),chat=params.get('chat');if(token||chat)history.replaceState(null,'',location.pathname);if(chat)pendingOpen=chat;if(token){try{await api('login',{token});}catch(e){error(e.message);}}await refresh();}
+// The admin Android app launches with ?inapp=admin; remember it so the phone-icon picker shows even after navigation.
+try{if(new URLSearchParams(location.search).get('inapp')==='admin')localStorage.setItem('conversa-inapp','admin');}catch{}
+const inAdminApp=()=>{try{return localStorage.getItem('conversa-inapp')==='admin';}catch{return false;}};
 async function init(){page('inbox');applyTheme(document.documentElement.dataset.themeChoice||'auto');if(LIVE){try{const config=await (await fetch('/api/config')).json();appMode=config.mode==='app';document.body.dataset.mode=config.mode;if(appMode&&!config.signup){$('tab-signup').hidden=true;welcomeTab('client-login');}}catch{}}await loginFromLink();window.addEventListener('hashchange',loginFromLink);setInterval(()=>{if(!document.hidden&&!busy&&(!eventsOpen||Date.now()-lastRefreshAt>30000))refresh();},3000);setInterval(()=>{if(!document.hidden)presence();},50000);document.addEventListener('visibilitychange',()=>{presence();if(!document.hidden)refresh();});setupApp();}
 
 // Conversation UI: all contact content is inserted as text, never HTML.
@@ -335,6 +338,15 @@ function applyBrand(brand){brandName=brand?.name||'Conversa';$('brand-name').tex
 const PRESETS=[['bloques','Bloques'],['gema','Gema'],['dados','Dados'],['planeta','Planeta'],['burbujas','Burbujas'],['calculadora','Calculadora'],['calendario','Calendario'],['notas','Notas'],['clima','Clima'],['reloj','Reloj']];
 function useLogo(src,button){const img=new Image();img.onload=()=>{try{brandDraft={icon192:squarePng(img,192),icon512:squarePng(img,512)};$('brand-preview').src=brandDraft.icon192;document.querySelectorAll('.brand-preset').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));}catch{error('No se pudo leer la imagen');}if(src.startsWith('blob:'))URL.revokeObjectURL(src);};img.onerror=()=>{if(src.startsWith('blob:'))URL.revokeObjectURL(src);error('No se pudo leer la imagen');};img.src=src;}
 function renderOwnerCard(){const card=$('owner-card');card.hidden=state.role!=='owner';$('brand-section').hidden=!state.brandEditable;
+ // Change the phone's home-screen icon and name: only inside the admin app, which carries the preset launchers.
+ const picker=$('phone-icon');if(picker){picker.hidden=!(state.role==='owner'&&inAdminApp());
+  if(!picker.hidden&&!picker.dataset.built){picker.dataset.built='1';
+   for(const [id,label] of [['Conversa','Conversa'],...PRESETS.map(([i,l])=>[i.charAt(0).toUpperCase()+i.slice(1),l])]){
+    const b=el('button','phone-icon-opt');b.type='button';b.title=label;b.setAttribute('aria-label',label);
+    const img=document.createElement('img');img.src=id==='Conversa'?'/icon-192.png':`/brand/preset/${id.toLowerCase()}.svg`;img.alt='';img.width=img.height=48;img.loading='lazy';
+    const span=document.createElement('span');span.textContent=label;b.append(img,span);
+    b.onclick=()=>{notice('Cambiando el icono…');location.href=`intent://set-icon?name=${id}#Intent;scheme=conversa-admin;package=com.andinamusic.conversa.admin;end`;};
+    picker.append(b);}}}
  $('pin-row').hidden=typeof state.ownerPin!=='boolean';$('pin-remove').hidden=!state.ownerPin;$('pin-input').placeholder=state.ownerPin?'PIN activo · escribe otro para cambiarlo':'6 a 12 números';
  if(card.hidden||!state.brandEditable)return;
  // Built only for the super admin, so client accounts never even load these images.

@@ -163,3 +163,11 @@ Android fija el icono y el nombre al instalar; no se cambian desde dentro de la 
 3. Sube `appVersionCode` en 1 y sigue los pasos de compilación de arriba.
 
 El 10 de octubre de 2026 se generaron así diez variantes (una por logo listo) con `appVersionCode` 2.
+
+### APK único con selector de icono (el que se entrega)
+
+El APK de administrador incluye 11 iconos/nombres como `activity-alias` (Conversa + los 10 logos), con uno habilitado a la vez. Desde el panel, en **Ajustes → Icono en el teléfono** (visible solo dentro de la app), al elegir uno se abre `conversa-admin://set-icon?name=<alias>` → `IconSwitchActivity`, que habilita ese alias y deshabilita los demás con `setComponentEnabledSetting(..., DONT_KILL_APP)`. La app marca su lanzamiento con `?inapp=admin` (override de `getLaunchingUrl`) para mostrar el selector.
+
+- Los iconos son fijos (los 11); no admite foto libre para el icono del sistema.
+- Al cambiar, algunos launchers (Xiaomi) cierran y reabren la app o tardan en refrescar el icono.
+- Se compila con `./gradlew assembleRelease` sobre el proyecto nativo editado (no con `bubblewrap build`, que regeneraría el manifiesto), luego `zipalign` + `apksigner`.
