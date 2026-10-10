@@ -346,7 +346,8 @@ function squarePng(img,size){const c=document.createElement('canvas');c.width=c.
 $('pin-save').onclick=async()=>{const pin=$('pin-input').value.trim();if(!/^\d{6,12}$/.test(pin))return error('El PIN debe tener de 6 a 12 números');const r=await action('owner/pin',{pin});if(r){$('pin-input').value='';notice('PIN guardado');}};
 $('pin-remove').onclick=async()=>{if(!await ask('¿Quitar el PIN? Para entrar necesitarás el código largo.','Quitar PIN'))return;const r=await action('owner/pin',{pin:null});if(r)notice('PIN quitado');};
 $('brand-pick').onclick=()=>$('brand-file').click();
-$('brand-file').onchange=()=>{const file=$('brand-file').files[0];$('brand-file').value='';if(!file)return;if(file.size>8*1048576)return error('Imagen demasiado grande');useLogo(URL.createObjectURL(file),null);};
+// Read as a data: URL: the page's security policy allows data: images, never blob: ones.
+$('brand-file').onchange=()=>{const file=$('brand-file').files[0];$('brand-file').value='';if(!file)return;if(file.size>8*1048576)return error('Imagen demasiado grande');const reader=new FileReader();reader.onload=()=>useLogo(reader.result,null);reader.onerror=()=>error('No se pudo leer la imagen');reader.readAsDataURL(file);};
 $('brand-save').onclick=async()=>{const name=$('brand-input').value.trim()||brandName;const r=await action('brand',{name,...(brandDraft||{})});if(r){brandDraft=null;document.querySelectorAll('.brand-preset').forEach(b=>b.setAttribute('aria-pressed','false'));applyBrand(r.brand);notice('Guardado');}};
 $('brand-reset').onclick=async()=>{if(!await ask('¿Volver al nombre y logo de Conversa?','Restaurar'))return;const r=await action('brand',{reset:true});if(r){brandDraft=null;document.querySelectorAll('.brand-preset').forEach(b=>b.setAttribute('aria-pressed','false'));applyBrand(null);notice('Restaurado');}};
 // Theme: automatic (follows the device), dark or light; remembered on this device only.
