@@ -14,17 +14,17 @@ function png(w,h=w){const chunk=(type,data)=>{const len=Buffer.alloc(4),crc=Buff
  const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(w,0);ihdr.writeUInt32BE(h,4);ihdr[8]=8;ihdr[9]=2;const row=Buffer.concat([Buffer.from([0]),Buffer.alloc(w*3,0x5a)]);
  return Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),chunk('IHDR',ihdr),chunk('IDAT',deflateSync(Buffer.concat(Array(h).fill(row)))),chunk('IEND',Buffer.alloc(0))]);}
 const dataUrl=b=>'data:image/png;base64,'+b.toString('base64');
-function request(port,host,method,path,{body,cookie}={}){return new Promise((resolve,reject)=>{const req=http.request({host:'127.0.0.1',port,path,method,agent:false,headers:{Host:host,...(body?{'Content-Type':'application/json',Origin:'https://'+host}:{}),...(cookie?{Cookie:cookie}:{})}},res=>{const parts=[];res.on('data',c=>parts.push(c));res.on('end',()=>{const buf=Buffer.concat(parts);let json=null;try{json=JSON.parse(buf);}catch{}resolve({status:res.statusCode,headers:res.headers,buf,json});});});req.on('error',reject);if(body)req.write(JSON.stringify(body));req.end();});}
+function request(port,host,method,path,{body,cookie,headers={}}={}){return new Promise((resolve,reject)=>{const req=http.request({host:'127.0.0.1',port,path,method,agent:false,headers:{Host:host,...(body?{'Content-Type':'application/json',Origin:'https://'+host}:{}),...(cookie?{Cookie:cookie}:{}),...headers}},res=>{const parts=[];res.on('data',c=>parts.push(c));res.on('end',()=>{const buf=Buffer.concat(parts);let json=null;try{json=JSON.parse(buf);}catch{}resolve({status:res.statusCode,headers:res.headers,buf,json});});});req.on('error',reject);if(body)req.write(JSON.stringify(body));req.end();});}
 
-async function boot(t){const dir=mkdtempSync(join(tmpdir(),'conversa-brand-')),port=51000+Math.floor(Math.random()*800),payloads=[];
+async function boot(t,options={}){const dir=mkdtempSync(join(tmpdir(),'conversa-brand-')),port=51000+Math.floor(Math.random()*800),payloads=[];
  const factory=(store,w)=>({workspace:w,history:new History(store,w),status:'disconnected',snapshot:()=>({status:'disconnected'}),pause(){},async pair(){},async connect(){}});
- const app=createApp({dir,port,publicOrigin:'https://panel.example',appOrigin:'https://app.example',connectorFactory:factory,pushSender:async(sub,payload)=>{payloads.push(JSON.parse(payload));return {ok:true};}});
+ const app=createApp({dir,port,publicOrigin:'https://panel.example',appOrigin:'https://app.example',connectorFactory:factory,pushSender:async(sub,payload)=>{payloads.push(JSON.parse(payload));return {ok:true};},...options});
  await new Promise(r=>app.server.listen(port,'127.0.0.1',r));await app.start();
  t.after(async()=>{app.close();await new Promise(r=>app.server.close(r));rmSync(dir,{recursive:true,force:true});});
  const panel=(m,p,o)=>request(port,'panel.example',m,p,o),api=(m,p,o)=>request(port,'app.example',m,p,o);
  const owner=(await panel('POST','/api/login',{body:{token:readFileSync(join(dir,'owner-token'),'utf8')}})).headers['set-cookie'][0].split(';')[0];
  const client=(await api('POST','/api/account/signup',{body:{number:'51955555555',password:'clave-cliente-5',accept:true}})).headers['set-cookie'][0].split(';')[0];
- return {app,panel,api,owner,client,payloads};}
+ return {app,dir,panel,api,owner,client,payloads};}
 
 test('only the super admin can rename the app and change its logo; clients never see the option',async t=>{
  const {panel,api,owner,client}=await boot(t);
@@ -65,4 +65,22 @@ test('with a custom brand, notifications carry its name and icon instead of Conv
  const h=app.connector.history,tm=h.establish('1').firstLinkedAt+1000;h.ingest({key:{remoteJid:'51988877766@s.whatsapp.net',id:'n1',fromMe:false},messageTimestamp:Math.floor(tm/1000),message:{conversation:'hola'}},'live');await new Promise(r=>setTimeout(r,40));
  assert.equal(payloads.at(-1).title,'Clima');assert.match(payloads.at(-1).icon,/^\/brand\/icon-192\.png\?v=\d+$/);assert.doesNotMatch(JSON.stringify(payloads.at(-1)),/Conversa|hola/);
  await panel('POST','/api/push/test',{cookie:owner,body:{}});assert.equal(payloads.at(-1).title,'Clima');
+});
+
+test('the owner can set a short PIN to enter from the phone; wrong PINs lock it for an hour; clients cannot',async t=>{
+ const {panel,api,owner,client,dir}=await boot(t,{trustProxyIp:true});
+ const login=(token,ip='198.51.100.1')=>panel('POST','/api/login',{body:{token},headers:{'CF-Connecting-IP':ip}});
+ assert.equal((await panel('GET','/api/state',{cookie:owner})).json.ownerPin,false);
+ assert.equal((await login('482916')).status,401,'no PIN yet');
+ for(const bad of ['12345','1234567890123','abc123','111111','123456','987654'])assert.equal((await panel('POST','/api/owner/pin',{cookie:owner,body:{pin:bad}})).status,400,bad);
+ assert.equal((await api('POST','/api/owner/pin',{cookie:client,body:{pin:'482916'}})).status,404);
+ assert.equal((await panel('POST','/api/owner/pin',{cookie:owner,body:{pin:'482916'}})).status,200);
+ assert.equal((await panel('GET','/api/state',{cookie:owner})).json.ownerPin,true);
+ const ok=await login('482916');assert.equal(ok.status,200);assert.match(ok.headers['set-cookie'][0],/conversa_session=[a-f0-9]{64}/);
+ assert.equal((await api('POST','/api/login',{body:{token:'482916'}})).status,404,'never on the public app');
+ // 10 wrong tries spread over many addresses lock the PIN for everyone; the long private code still works.
+ for(let i=0;i<10;i++)assert.equal((await login(String(100000+i*7919),'203.0.113.'+(i+1))).status,401);
+ const locked=await login('482916','198.51.100.9');assert.equal(locked.status,429);assert.match(locked.json.error,/código largo/);
+ assert.equal((await login(readFileSync(join(dir,'owner-token'),'utf8'),'198.51.100.10')).status,200);
+ assert.equal((await panel('POST','/api/owner/pin',{cookie:owner,body:{pin:null}})).json.pin,false);
 });

@@ -19,7 +19,7 @@ const PUBLIC={'/':'index.html','/app.js':'app.js','/theme.js':'theme.js','/sw.js
 const TYPES={html:'text/html; charset=utf-8',js:'text/javascript; charset=utf-8',css:'text/css; charset=utf-8',svg:'image/svg+xml; charset=utf-8',webmanifest:'application/manifest+json; charset=utf-8',png:'image/png',json:'application/json; charset=utf-8'};
 // Files the browser may show or play in place; anything else (documents, unknown types) is only downloaded.
 const INLINE=/^(image\/(jpeg|png|webp|gif)|audio\/(ogg|mpeg|mp4|aac|webm|amr|wav)|video\/(mp4|webm|3gpp))$/,MEDIA_MAX=25*1048576,LABELS={image:'📷 Foto',audio:'🎤 Mensaje de voz',video:'🎥 Video',document:'📄 Documento',sticker:'Sticker',view_once:'Visualización única',location:'📍 Ubicación',contact:'👤 Contacto',poll:'📊 Encuesta',event:'📅 Evento',invite:'👥 Invitación a un grupo',call:'📞 Llamada'},REACTIONS=new Set(['👍','❤️','😂','😮','😢','🙏','']);
-const ERRORS_SHOWN=['/api/brand','/api/disconnect','/api/bot/config','/api/chat/review','/api/bot/preview','/api/chat/send','/api/chat/react','/api/push/subscribe','/api/history/more','/api/connect'];
+const ERRORS_SHOWN=['/api/owner/pin','/api/brand','/api/disconnect','/api/bot/config','/api/chat/review','/api/bot/preview','/api/chat/send','/api/chat/react','/api/push/subscribe','/api/history/more','/api/connect'];
 // Client accounts: international number (country code, digits only) and a password hashed with scrypt.
 export const normalizeNumber=v=>{if(typeof v!=='string'&&typeof v!=='number')return null;const d=String(v).replace(/[^\d]/g,'').replace(/^00/,'');return /^[1-9]\d{7,14}$/.test(d)?d:null;};
 async function hashPassword(password){const salt=randomBytes(16),key=await scryptAsync(password,salt,32,{N:16384,r:8,p:1,maxmem:64*1048576});return `scrypt$${salt.toString('base64')}$${key.toString('base64')}`;}
@@ -98,6 +98,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  // Constant cost per check: expired entries are swept every minute and the map never holds more than 20 000 keys.
  const limited=(key,max,windowMs)=>{const now=Date.now(),v=limits.get(key);if(!v||now-v.start>windowMs){limits.delete(key);if(limits.size>=20000)limits.delete(limits.keys().next().value);limits.set(key,{count:1,start:now,window:windowMs});return false;}v.count++;return v.count>max;};
  const signingUp=new Set();
+ const pinFails={count:0,start:0},pinLocked=()=>pinFails.count>=10&&Date.now()-pinFails.start<3600000,pinFailed=()=>{const now=Date.now();if(now-pinFails.start>3600000)Object.assign(pinFails,{count:0,start:now});pinFails.count++;};
  // Password recovery: a 6-digit code sent from the client's own linked WhatsApp to their «message yourself» chat.
  const recoveries=new Map();
  const equal=(a,b)=>typeof a==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
@@ -165,7 +166,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     if(path==='/api/state'){const pending=ctx.role==='client'&&!ctx.account.linked;
      return json(200,{connection:c.snapshot(),messages:pending?[]:store.list(w,'messages',100).map(m=>({...lite(m),conversationJid:c.history.canonical(m.jid)})),totalMessages:store.count(w,'messages'),chats:pending?[]:store.list(w,'chats',2000),totalChats:store.count(w,'chats'),bot:{...b.config(),aiAvailable:!!respond},queue:store.list(w,'queue',100).map(j=>({state:j.state,timestamp:j.timestamp})),checkedAt:Date.now(),
       workspace:ctx.role==='owner'?{name:'Mi espacio',mode:'Privado • un propietario'}:{name:'+'+ctx.account.number,mode:ctx.account.demo?'Cuenta de demostración':'Tu cuenta'},role:ctx.role,account:ctx.role==='client'?{number:ctx.account.number,linked:!!ctx.account.linked,demo:!!ctx.account.demo,createdAt:ctx.account.createdAt}:null,
-      brand:(b=>b?{name:b.name,icon:!!b.icon192,updatedAt:b.updatedAt}:null)(brandAllowed(ctx)?store.get(w,'settings','brand'):null),brandEditable:brandAllowed(ctx),
+      brand:(b=>b?{name:b.name,icon:!!b.icon192,updatedAt:b.updatedAt}:null)(brandAllowed(ctx)?store.get(w,'settings','brand'):null),brandEditable:brandAllowed(ctx),ownerPin:ctx.role==='owner'?!!store.get('owner','settings','pin'):undefined,
       notifications:{devices:store.count(w,'push'),preview:store.get(w,'settings','push')?.preview!==false},tests:ctx.role==='owner'&&testEndpoints,keywordTest:ctx.role==='owner'?(t=>t&&{jid:t.jid,expiresAt:t.expiresAt,consumedAt:t.consumedAt||null})(store.get(w,'settings','keyword-test')):null});}
     if(path==='/api/messages'){const offset=Math.max(0,Math.min(10000000,Number(url.searchParams.get('offset'))||0));return json(200,{messages:store.list(w,'messages',100,offset).map(m=>({...lite(m),conversationJid:c.history.canonical(m.jid)})),total:store.count(w,'messages')});}
     if(path==='/api/chat/messages'){
@@ -240,7 +241,13 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    if(path==='/api/login'){
     if(!ownerHost(host))return json(404,{error:'Ruta no encontrada.'});
     if(limited('owner-login|'+ip,10,60000))return json(429,{error:'Demasiados intentos. Espera un minuto.'});
-    if(!equal(input.token,token))return json(401,{error:'Acceso privado inválido.'});
+    const given=typeof input.token==='string'?input.token.trim():'';let ok=equal(given,token);
+    // Or the short PIN the owner set in Ajustes: valid only while the private code is unchanged, and locked for an hour
+    // after 10 wrong tries from anywhere (Cloudflare Access already stands in front of this page).
+    if(!ok&&/^\d{6,12}$/.test(given)){const pin=store.get('owner','settings','pin');if(pin?.tokenVersion===hash(token)){
+     if(pinLocked())return json(429,{error:'PIN bloqueado por intentos fallidos. Entra con el código largo o espera una hora.'});
+     ok=await checkPassword(given,pin.hash);if(ok)pinFails.count=0;else pinFailed();}}
+    if(!ok)return json(401,{error:'Acceso privado inválido.'});
     const id=randomBytes(32).toString('hex');store.put('owner','sessions',hash(id),{expiry:Date.now()+43200000,tokenVersion:hash(token)});store.trim('owner','sessions',20);
     res.setHeader('Set-Cookie',cookie(id,43200));return json(200,{ok:true});
    }
@@ -318,6 +325,15 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     const passwordHash=await hashPassword(input.password),fresh=store.get('system','accounts',ctx.account.id);
     if(!fresh)return json(401,{error:'Tu sesión terminó. Vuelve a entrar.'});
     store.put('system','accounts',fresh.id,{...fresh,passwordHash});dropSessions(fresh,sidHash);
+   }
+   else if(path==='/api/owner/pin'){
+    // A short PIN to enter the private panel from a phone; the long private code keeps working.
+    if(ctx.role!=='owner')return json(404,{error:'Ruta no encontrada.'});
+    if(input.pin===null)store.remove('owner','settings','pin');
+    else{const pin=input.pin;if(typeof pin!=='string'||!/^\d{6,12}$/.test(pin))throw new Error('El PIN debe tener de 6 a 12 números.');
+     if(/^(\d)\1+$/.test(pin)||'01234567890123456789'.includes(pin)||'98765432109876543210'.includes(pin))throw new Error('Elige un PIN menos obvio.');
+     store.put('owner','settings','pin',{hash:await hashPassword(pin),tokenVersion:hash(token),setAt:Date.now()});pinFails.count=0;}
+    return json(200,{pin:!!store.get('owner','settings','pin')});
    }
    else if(path==='/api/brand'){
     if(!brandAllowed(ctx))return json(404,{error:'Ruta no encontrada.'});

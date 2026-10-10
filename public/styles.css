@@ -621,3 +621,8 @@ body[data-page=inbox] main>header{justify-content:flex-end;margin-bottom:14px}
 }
 @media(max-width:850px){.shell{grid-template-rows:auto 1fr}}
 @media(max-width:680px){.inbox-layout{height:calc(100dvh - 122px - max(10px,env(safe-area-inset-top)) - env(safe-area-inset-bottom))}}
+.pin-row{display:grid;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.pin-row label{font-weight:650;font-size:14px}
+.pin-fields{display:flex;gap:8px;flex-wrap:wrap}
+.pin-fields input{flex:1;min-width:160px;font-size:16px;min-height:46px;border-radius:12px;letter-spacing:3px}
+.pin-row:not([hidden])+.owner-tools{margin-top:10px}
