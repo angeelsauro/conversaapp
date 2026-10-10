@@ -153,3 +153,13 @@ Compilación probada el 9 de octubre de 2026 con Bubblewrap 1.27.0, JDK 17 y las
 Si tu SDK tiene las herramientas de línea de comandos en la raíz (con un `source.properties` ahí), Gradle no ve las plataformas instaladas: usa la estructura estándar `cmdline-tools/latest/`.
 
 Para que una app abra sin barra de dirección, el servidor debe declararla: `CONVERSA_ANDROID_PACKAGE` admite varios paquetes separados por comas (por ejemplo `com.andinamusic.conversa.admin,com.andinamusic.conversa`) y `CONVERSA_ANDROID_SHA256` varias huellas. En el panel, además, Cloudflare Access debe dejar pasar `/.well-known/assetlinks.json` (ver SERVIDOR.md).
+
+### Cambiar el icono y el nombre de la app de administrador
+
+Android fija el icono y el nombre al instalar; no se cambian desde dentro de la app. Para cambiarlos se compila otro APK con **el mismo `packageId` y la misma llave** y un `appVersionCode` igual o mayor: al instalarlo encima, el icono cambia y la sesión se conserva.
+
+1. Copia `android/admin/twa-manifest.json` a una carpeta vacía.
+2. Cambia `name` y `launcherName` por el nombre deseado, y `iconUrl` y `maskableIconUrl` por un PNG cuadrado de 512 px con el logo (por ejemplo, uno de `public/brand-presets/*.svg` convertido a PNG y servido desde una URL que Bubblewrap pueda leer).
+3. Sube `appVersionCode` en 1 y sigue los pasos de compilación de arriba.
+
+El 10 de octubre de 2026 se generaron así diez variantes (una por logo listo) con `appVersionCode` 2.
