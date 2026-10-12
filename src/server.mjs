@@ -26,7 +26,7 @@ async function hashPassword(password){const salt=randomBytes(16),key=await scryp
 async function checkPassword(password,stored){if(typeof password!=='string'||typeof stored!=='string')return false;const [,salt,key]=stored.split('$');const got=await scryptAsync(password,Buffer.from(salt,'base64'),32,{N:16384,r:8,p:1,maxmem:64*1048576}),want=Buffer.from(key,'base64');return got.length===want.length&&timingSafeEqual(got,want);}
 const TERMS_VERSION='2026-10-09';
 // Custom brand (name + logo): for now only the owner (super admin); later a paid option for client accounts.
-const brandAllowed=ctx=>ctx?.role==='owner';
+const brandAllowed=ctx=>ctx?.role==='owner'||(ctx?.role==='client'&&!!ctx.account?.pro&&!ctx.account?.demo);
 const pngSize=b=>b.length>24&&b.readUInt32BE(0)===0x89504e47&&b.readUInt32BE(4)===0x0d0a1a0a&&b.toString('latin1',12,16)==='IHDR'?[b.readUInt32BE(16),b.readUInt32BE(20)]:null;
 // Rate limits count IPv4 clients by address and IPv6 clients by /64 (one home or mobile network).
 export function clientKey(ip){ip=String(ip||'').split('%')[0];const v4=/^(?:::ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);if(v4)return v4[1];if(!ip.includes(':'))return ip;const [head,tail='']=ip.split('::'),a=head?head.split(':'):[],b=tail?tail.split(':'):[],full=[...a,...Array(Math.max(0,8-a.length-b.length)).fill('0'),...b];return full.slice(0,4).map(x=>(x.toLowerCase().replace(/^0+(?=.)/,''))).join(':')+'::/64';}
@@ -135,10 +135,14 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
   try {
    if(req.method==='GET'&&path==='/healthz')return json(200,{ok:true});
    if(req.method==='GET'&&(['/manifest.webmanifest','/brand/icon-192.png','/brand/icon-512.png'].includes(path)||/^\/brand\/preset\/[a-z]{1,20}\.svg$/.test(path))){
-    // The installed app takes the owner's brand when one is set; everyone else gets Conversa.
-    const sid0=req.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith(cookieName+'='))?.slice(cookieName.length+1),key0=sid0&&/^[a-f0-9]{64}$/.test(sid0)?hash(sid0):null,s0=key0&&ownerHost(host)&&store.get('owner','sessions',key0),brand=s0?.expiry>Date.now()&&s0.tokenVersion===hash(token)?store.get('owner','settings','brand'):null,owner=!!(s0?.expiry>Date.now()&&s0.tokenVersion===hash(token));
-    // Ready-made generic logos (games, calculator, calendar…) to disguise the app: only the super admin sees them.
-    if(path.startsWith('/brand/preset/')){const file=join(root,'public','brand-presets',path.slice(14));if(!owner||!existsSync(file))return json(404,{error:'Ruta no encontrada.'});res.writeHead(200,{'Content-Type':'image/svg+xml','Cache-Control':'private, max-age=86400'});return res.end(readFileSync(file));}
+    // The installed app takes the brand of whoever is signed in — the owner on the panel, a Pro client on the app; everyone else gets Conversa.
+    const sid0=req.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith(cookieName+'='))?.slice(cookieName.length+1),key0=sid0&&/^[a-f0-9]{64}$/.test(sid0)?hash(sid0):null;
+    let brandW=null,canBrand=false;
+    if(key0&&ownerHost(host)){const s0=store.get('owner','sessions',key0);if(s0?.expiry>Date.now()&&s0.tokenVersion===hash(token)){brandW='owner';canBrand=true;}}
+    if(!canBrand&&key0&&clientHost(host)){const s0=store.get('system','sessions',key0),a0=s0?.expiry>Date.now()&&store.get('system','accounts',s0.account);if(a0&&!a0.deletedAt&&a0.pro&&!a0.demo){brandW=a0.w;canBrand=true;}}
+    const brand=brandW?store.get(brandW,'settings','brand'):null;
+    // Ready-made generic logos to brand the app: for the owner and Pro clients.
+    if(path.startsWith('/brand/preset/')){const file=join(root,'public','brand-presets',path.slice(14));if(!canBrand||!existsSync(file))return json(404,{error:'Ruta no encontrada.'});res.writeHead(200,{'Content-Type':'image/svg+xml','Cache-Control':'private, max-age=86400'});return res.end(readFileSync(file));}
     if(path==='/manifest.webmanifest'){const m=JSON.parse(readFileSync(join(root,'public','manifest.webmanifest'),'utf8'));if(brand){m.name=m.short_name=m.description=brand.name;if(brand.icon512)m.icons=[{src:'/brand/icon-192.png?v='+brand.updatedAt,sizes:'192x192',type:'image/png'},{src:'/brand/icon-512.png?v='+brand.updatedAt,sizes:'512x512',type:'image/png'},{src:'/brand/icon-512.png?v='+brand.updatedAt,sizes:'512x512',type:'image/png',purpose:'maskable'}];}res.writeHead(200,{'Content-Type':TYPES.webmanifest});return res.end(JSON.stringify(m));}
     const size=path.includes('512')?'512':'192',data=brand?.['icon'+size]?Buffer.from(brand['icon'+size],'base64'):readFileSync(join(root,'public',`icon-${size}.png`));res.writeHead(200,{'Content-Type':'image/png','Content-Length':data.length});return res.end(data);
    }
@@ -229,7 +233,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     if(path==='/api/push/key')return json(200,{publicKey:vapidKeys(store).publicKey});
     if(path==='/api/export'){res.setHeader('Content-Disposition','attachment; filename="conversa-mensajes.json"');return json(200,{exportedAt:new Date().toISOString(),messages:store.list(w,'messages',-1),chats:store.list(w,'chats',-1)});}
     // The owner sees how many client accounts exist (no message content).
-    if(path==='/api/admin/accounts'&&ctx.role==='owner')return json(200,{max:maxAccounts,accounts:accounts().map(a=>({number:a.number.slice(0,-4).replace(/\d/g,'•')+a.number.slice(-4),createdAt:a.createdAt,linked:!!a.linked,demo:!!a.demo,status:tenants.get(a.w)?.connector.status||'paused'}))});
+    if(path==='/api/admin/accounts'&&ctx.role==='owner')return json(200,{max:maxAccounts,accounts:accounts().map(a=>({id:a.id,number:a.number.slice(0,-4).replace(/\d/g,'•')+a.number.slice(-4),createdAt:a.createdAt,linked:!!a.linked,demo:!!a.demo,pro:!!a.pro,status:tenants.get(a.w)?.connector.status||'paused'}))});
     return json(404,{error:'Ruta no encontrada.'});
    }
    if(req.method!=='POST')return json(404,{error:'Ruta no encontrada.'});
@@ -325,6 +329,16 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     const passwordHash=await hashPassword(input.password),fresh=store.get('system','accounts',ctx.account.id);
     if(!fresh)return json(401,{error:'Tu sesión terminó. Vuelve a entrar.'});
     store.put('system','accounts',fresh.id,{...fresh,passwordHash});dropSessions(fresh,sidHash);
+   }
+   else if(path==='/api/admin/account/pro'){
+    // The owner turns the Pro features (custom name and logo) on or off for a client account.
+    if(ctx.role!=='owner')return json(404,{error:'Ruta no encontrada.'});
+    const a=typeof input.id==='string'&&store.get('system','accounts',input.id);
+    if(!a||a.deletedAt||a.demo)return json(404,{error:'Cuenta no encontrada.'});
+    const pro=input.pro===true;store.put('system','accounts',a.id,{...a,pro});
+    const t=tenants.get(a.w);if(t)t.accountPro=pro;
+    if(!pro)store.remove(a.w,'settings','brand');// turning Pro off also clears their custom brand
+    changed(a.w);return json(200,{id:a.id,pro});
    }
    else if(path==='/api/owner/pin'){
     // A short PIN to enter the private panel from a phone; the long private code keeps working.

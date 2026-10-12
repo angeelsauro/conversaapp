@@ -335,9 +335,23 @@ let brandName='Conversa',brandDraft=null;
 const brandTargets=[[$('brand-logo'),'src',192],[document.querySelector('link[rel=icon]'),'href',192],[document.querySelector('link[rel=apple-touch-icon]'),'href',512]].filter(([n])=>n).map(([n,attr,size])=>({n,attr,size,original:n.getAttribute(attr)}));
 function applyBrand(brand){brandName=brand?.name||'Conversa';$('brand-name').textContent=brand?.name||'conversa';document.querySelector('meta[name=apple-mobile-web-app-title]')?.setAttribute('content',brandName);
  for(const t of brandTargets){const want=brand?.icon?`/brand/icon-${t.size}.png?v=${brand.updatedAt}`:t.original;if(t.n.getAttribute(t.attr)!==want)t.n.setAttribute(t.attr,want);}}
+async function renderAdmin(){const card=$('admin-card');if(!card)return;card.hidden=state.role!=='owner';if(card.hidden)return;
+ let data;try{data=await (await fetch('/api/admin/accounts')).json();}catch{return;}
+ $('admin-count').textContent=`${data.accounts.length} de ${data.max} cuentas`;
+ const list=$('admin-list');list.replaceChildren(...data.accounts.map(a=>{
+  const row=el('div','admin-row');const info=el('div','admin-info');
+  const num=el('strong',null,a.number);const tag=el('span','admin-tag muted',(a.linked?'Vinculada':'Sin vincular')+(a.demo?' · demo':''));
+  info.append(num,tag);
+  const btn=el('button',a.pro?'secondary':'primary');btn.type='button';btn.textContent=a.pro?'Pro activo':'Dar Pro';btn.disabled=a.demo;
+  btn.onclick=async()=>{const r=await action('admin/account/pro',{id:a.id,pro:!a.pro});if(r)notice(r.pro?'Pro activado':'Pro quitado');};
+  row.append(info,btn);return row;}));
+ if(!data.accounts.length)list.replaceChildren(el('p','muted','Aún no hay cuentas de clientes.'));}
 const PRESETS=[['bloques','Bloques'],['gema','Gema'],['dados','Dados'],['planeta','Planeta'],['burbujas','Burbujas'],['calculadora','Calculadora'],['calendario','Calendario'],['notas','Notas'],['clima','Clima'],['reloj','Reloj']];
 function useLogo(src,button){const img=new Image();img.onload=()=>{try{brandDraft={icon192:squarePng(img,192),icon512:squarePng(img,512)};$('brand-preview').src=brandDraft.icon192;document.querySelectorAll('.brand-preset').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));}catch{error('No se pudo leer la imagen');}if(src.startsWith('blob:'))URL.revokeObjectURL(src);};img.onerror=()=>{if(src.startsWith('blob:'))URL.revokeObjectURL(src);error('No se pudo leer la imagen');};img.src=src;}
-function renderOwnerCard(){const card=$('owner-card');card.hidden=state.role!=='owner';$('brand-section').hidden=!state.brandEditable;
+function renderOwnerCard(){const card=$('owner-card');card.hidden=!state.brandEditable;$('brand-section').hidden=!state.brandEditable;
+ // The owner's own tools (export, cerrar sesión, PIN, selector de icono, cuentas) never show to a Pro client.
+ const tools=document.querySelector('.owner-tools');if(tools)tools.hidden=state.role!=='owner';
+ renderAdmin();
  // Change the phone's home-screen icon and name: only inside the admin app, which carries the preset launchers.
  const picker=$('phone-icon');if(picker){picker.hidden=!(state.role==='owner'&&inAdminApp());
   if(!picker.hidden&&!picker.dataset.built){picker.dataset.built='1';

@@ -14,6 +14,7 @@ function png(w,h=w){const chunk=(type,data)=>{const len=Buffer.alloc(4),crc=Buff
  const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(w,0);ihdr.writeUInt32BE(h,4);ihdr[8]=8;ihdr[9]=2;const row=Buffer.concat([Buffer.from([0]),Buffer.alloc(w*3,0x5a)]);
  return Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),chunk('IHDR',ihdr),chunk('IDAT',deflateSync(Buffer.concat(Array(h).fill(row)))),chunk('IEND',Buffer.alloc(0))]);}
 const dataUrl=b=>'data:image/png;base64,'+b.toString('base64');
+const png192=()=>png(192),png512=()=>png(512);
 function request(port,host,method,path,{body,cookie,headers={}}={}){return new Promise((resolve,reject)=>{const req=http.request({host:'127.0.0.1',port,path,method,agent:false,headers:{Host:host,...(body?{'Content-Type':'application/json',Origin:'https://'+host}:{}),...(cookie?{Cookie:cookie}:{}),...headers}},res=>{const parts=[];res.on('data',c=>parts.push(c));res.on('end',()=>{const buf=Buffer.concat(parts);let json=null;try{json=JSON.parse(buf);}catch{}resolve({status:res.statusCode,headers:res.headers,buf,json});});});req.on('error',reject);if(body)req.write(JSON.stringify(body));req.end();});}
 
 async function boot(t,options={}){const dir=mkdtempSync(join(tmpdir(),'conversa-brand-')),port=51000+Math.floor(Math.random()*800),payloads=[];
@@ -83,4 +84,32 @@ test('the owner can set a short PIN to enter from the phone; wrong PINs lock it 
  const locked=await login('482916','198.51.100.9');assert.equal(locked.status,429);assert.match(locked.json.error,/código largo/);
  assert.equal((await login(readFileSync(join(dir,'owner-token'),'utf8'),'198.51.100.10')).status,200);
  assert.equal((await panel('POST','/api/owner/pin',{cookie:owner,body:{pin:null}})).json.pin,false);
+});
+
+test('Pro: the owner grants Pro to a client, who can then brand their own app; the manifest follows each account',async t=>{
+ const {app,panel,api,owner}=await boot(t);
+ const client=(await api('POST','/api/account/signup',{body:{number:'51944000044',password:'clave-pro-44',accept:true}})).headers['set-cookie'][0].split(';')[0];
+ // Before Pro: a client cannot brand and sees no option.
+ assert.equal((await api('GET','/api/state',{cookie:client})).json.brandEditable,false);
+ assert.equal((await api('POST','/api/brand',{cookie:client,body:{name:'Mi Marca'}})).status,404);
+ assert.equal((await api('GET','/brand/preset/calculadora.svg',{cookie:client})).status,404);
+ // The owner lists accounts and grants Pro.
+ const accts=(await panel('GET','/api/admin/accounts',{cookie:owner})).json;const acc=accts.accounts.find(a=>a.number.endsWith('0044'));
+ assert.ok(acc&&acc.pro===false);
+ assert.equal((await api('POST','/api/admin/account/pro',{cookie:client,body:{id:acc.id,pro:true}})).status,404,'a client cannot grant Pro');
+ assert.equal((await panel('POST','/api/admin/account/pro',{cookie:owner,body:{id:acc.id,pro:true}})).json.pro,true);
+ // Now the client can brand, and only their own workspace.
+ assert.equal((await api('GET','/api/state',{cookie:client})).json.brandEditable,true);
+ assert.equal((await api('GET','/brand/preset/calculadora.svg',{cookie:client})).status,200);
+ const png=dataUrl(png512());
+ assert.equal((await api('POST','/api/brand',{cookie:client,body:{name:'Tienda Ana',icon192:dataUrl(png192()),icon512:png}})).status,200);
+ const cm=(await api('GET','/manifest.webmanifest',{cookie:client})).json;assert.equal(cm.name,'Tienda Ana');assert.match(cm.icons[0].src,/^\/brand\/icon-192/);
+ // The owner's manifest is still Conversa; a logged-out visitor too.
+ assert.equal((await api('GET','/manifest.webmanifest')).json.name,'Conversa');
+ assert.equal((await panel('GET','/manifest.webmanifest',{cookie:owner})).json.name,'Conversa');
+ // Removing Pro clears the client's brand.
+ assert.equal((await panel('POST','/api/admin/account/pro',{cookie:owner,body:{id:acc.id,pro:false}})).json.pro,false);
+ assert.equal((await api('GET','/api/state',{cookie:client})).json.brandEditable,false);
+ assert.equal((await api('GET','/api/state',{cookie:client})).json.brand,null);
+ assert.equal((await api('GET','/manifest.webmanifest',{cookie:client})).json.name,'Conversa');
 });

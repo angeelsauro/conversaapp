@@ -636,3 +636,9 @@ body[data-page=inbox] main>header{justify-content:flex-end;margin-bottom:14px}
 [data-theme=dark] .phone-icon .phone-icon-opt:hover{background:#1A2E2A}
 .phone-icon{display:flex;flex-wrap:wrap;gap:6px}
 .phone-icon h3,.phone-icon p{flex-basis:100%}
+.admin-list{display:grid;gap:8px;margin-top:12px}
+.admin-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px}
+.admin-info{min-width:0;display:grid;gap:2px}
+.admin-info strong{font-size:15px}
+.admin-tag{font-size:12px}
+.admin-row button{min-height:40px;padding:8px 14px;font-size:13px;white-space:nowrap}
