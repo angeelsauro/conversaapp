@@ -336,7 +336,8 @@ const brandTargets=[[$('brand-logo'),'src',192],[document.querySelector('link[re
 function applyBrand(brand){brandName=brand?.name||'Conversa';$('brand-name').textContent=brand?.name||'conversa';document.querySelector('meta[name=apple-mobile-web-app-title]')?.setAttribute('content',brandName);
  for(const t of brandTargets){const want=brand?.icon?`/brand/icon-${t.size}.png?v=${brand.updatedAt}`:t.original;if(t.n.getAttribute(t.attr)!==want)t.n.setAttribute(t.attr,want);}}
 async function renderAdmin(){const card=$('admin-card');if(!card)return;card.hidden=state.role!=='owner';if(card.hidden)return;
- let data;try{data=await (await fetch('/api/admin/accounts')).json();}catch{return;}
+ let data;try{data=await (await fetch('/api/admin/accounts')).json();}catch{data=null;}
+ if(!data||!Array.isArray(data.accounts)){card.hidden=true;return;}
  $('admin-count').textContent=`${data.accounts.length} de ${data.max} cuentas`;
  const list=$('admin-list');list.replaceChildren(...data.accounts.map(a=>{
   const row=el('div','admin-row');const info=el('div','admin-info');
