@@ -12,8 +12,8 @@ Antes de enviar a revisión, comprueba tú mismo que la cuenta demo entra y mues
 ## Campos del formulario
 
 - **Nombre de la instrucción:** `Cuenta demo con datos ficticios`
-- **Nombre de usuario, correo o número de teléfono:** `[NÚMERO DEMO]`
-- **Contraseña:** `[CONTRASEÑA DEMO]`
+- **Nombre de usuario, correo o número de teléfono:** `51900000000`
+- **Contraseña:** `ConversaDemo2026`
 - **Otra información necesaria para acceder a tu app:** pega el texto en inglés (los revisores trabajan en varios idiomas; el inglés es lo más seguro). Debajo está la versión en español, como referencia.
 
 ### Texto para pegar (inglés)
@@ -21,7 +21,7 @@ Antes de enviar a revisión, comprueba tú mismo que la cuenta demo entra y mues
 ```
 Demo account with fictional data. It does NOT require linking a real WhatsApp number.
 
-1. Open Conversa. On the sign-in screen enter the number [NÚMERO DEMO] and the password [CONTRASEÑA DEMO], then tap "Entrar".
+1. Open Conversa. On the sign-in screen enter the number 51900000000 and the password ConversaDemo2026, then tap "Entrar".
 2. "Mensajes" tab: inbox with fictional chats. Use the search box and the filters (Todos, No leídos, Revisión, Bot).
 3. Tap "Elena Castro": a chat with a photo and a voice note. Tap the photo to open it and the play button to hear the voice note. Type a reply in "Escribe un mensaje".
 4. In the chat, tap the contact's name or avatar to open the contact profile (number, shared files).
@@ -39,7 +39,7 @@ Contact: [CORREO DE CONTACTO]
 ```
 Cuenta demo con datos ficticios. NO requiere vincular un número de WhatsApp real.
 
-1. Abre Conversa. En la pantalla de acceso escribe el número [NÚMERO DEMO] y la contraseña [CONTRASEÑA DEMO] y pulsa «Entrar».
+1. Abre Conversa. En la pantalla de acceso escribe el número 51900000000 y la contraseña ConversaDemo2026 y pulsa «Entrar».
 2. Pestaña «Mensajes»: bandeja con chats ficticios. Prueba la búsqueda y los filtros (Todos, No leídos, Revisión, Bot).
 3. Abre «Elena Castro»: un chat con una foto y una nota de voz. Toca la foto para verla y el botón de reproducir para escuchar el audio. Escribe una respuesta en «Escribe un mensaje».
 4. En el chat, toca el nombre o la foto del contacto para abrir su perfil (número y archivos compartidos).
