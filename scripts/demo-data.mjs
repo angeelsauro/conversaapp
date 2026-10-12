@@ -59,6 +59,8 @@ export function seedDemo({store,history:h,bot,now=Date.now(),media={}}){
  // New chat reviewed and available for the bot (receives the scripted message once the bot is active).
  add(DEMO_DIEGO,'Diego Martín',[[demoDay,'Buenas tardes, ¿hacéis envíos a domicilio?'],[demoDay-30*demoMinute,'Hola Diego, por ahora solo recogida en tienda.',{fromMe:true}],[demoDay-40*demoMinute,'',{message:{extendedTextMessage:{text:'Perfecto, paso el sábado entonces 👌',contextInfo:{stanzaId:'seed-34600000104-1',participant:DEMO_OWNER+'@s.whatsapp.net',quotedMessage:{conversation:'Hola Diego, por ahora solo recogida en tienda.'}}}}}]]);
  h.review(DEMO_DIEGO,true);
+ // Fijar un chat para mostrar la función en la demo.
+ const pinned=h.chat('34600000101@s.whatsapp.net');pinned.pinned=now-1000;h.save(pinned);
  // New chat the owner has not verified yet.
  add(DEMO_CARMEN,'Carmen López',[[4*60*demoMinute,'',{message:{locationMessage:{degreesLatitude:40.4168,degreesLongitude:-3.7038,name:'Puerta del Sol',address:'Plaza de la Puerta del Sol, Madrid'}}}],[3*60*demoMinute,'Hola, quiero hacer un encargo para el viernes']]);
  // View-once content: never opened, the chat goes to review.

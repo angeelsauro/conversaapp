@@ -642,3 +642,9 @@ body[data-page=inbox] main>header{justify-content:flex-end;margin-bottom:14px}
 .admin-info strong{font-size:15px}
 .admin-tag{font-size:12px}
 .admin-row button{min-height:40px;padding:8px 14px;font-size:13px;white-space:nowrap}
+.pin-mark{width:14px;height:14px;color:#51856A;flex:none;margin:0 2px}
+.chat-row.is-pinned{background:#F6FBF8}
+.chat-row.is-pinned:hover{background:#EFF7F1}
+.chat-row.is-pinned.current{background:#EAF5EF}
+[data-theme=dark] .chat-row.is-pinned{background:#13211E}
+[data-theme=dark] .pin-mark{color:#7FE0B5}
