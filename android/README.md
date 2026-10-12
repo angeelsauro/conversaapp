@@ -1,16 +1,16 @@
 # App Android de Conversa (TWA con Bubblewrap) en Windows
 
-La app de Android es una **Trusted Web Activity (TWA)**: una app pequeña que abre `https://[DOMINIO-APP]` a pantalla completa con el motor de Chrome. No hay código Android propio que mantener.
+La app de Android es una **Trusted Web Activity (TWA)**: una app pequeña que abre `https://app.mutuomatch.com` a pantalla completa con el motor de Chrome. No hay código Android propio que mantener.
 
 - Paquete: `com.andinamusic.conversa` (no se puede cambiar después de publicar).
 - Configuración: `android/twa-manifest.json`.
 - Los cambios en la web se ven en la app sin publicar una nueva versión. Solo hay que recompilar si cambian el nombre, el icono, los colores, el dominio o el paquete.
 
-Antes de empezar, la web debe estar publicada en `https://[DOMINIO-APP]`, sin Cloudflare Access ni otro inicio de sesión delante, y deben abrir:
+Antes de empezar, la web debe estar publicada en `https://app.mutuomatch.com`, sin Cloudflare Access ni otro inicio de sesión delante, y deben abrir:
 
-- `https://[DOMINIO-APP]/manifest.webmanifest`
-- `https://[DOMINIO-APP]/icon-512.png`
-- `https://[DOMINIO-APP]/icon-maskable-512.png`
+- `https://app.mutuomatch.com/manifest.webmanifest`
+- `https://app.mutuomatch.com/icon-512.png`
+- `https://app.mutuomatch.com/icon-maskable-512.png`
 
 ## 1. Instalar las herramientas (una sola vez)
 
@@ -63,7 +63,7 @@ Te pedirá una contraseña y tus datos (nombre, organización «Andina Music», 
    notepad twa-manifest.json
    ```
 2. En el Bloc de notas:
-   - reemplaza las 5 apariciones de `[DOMINIO-APP]` por el dominio real, sin `https://` en `host` (por ejemplo `app.ejemplo.com`);
+   - reemplaza las 5 apariciones de `app.mutuomatch.com` por el dominio real, sin `https://` en `host` (por ejemplo `app.ejemplo.com`);
    - reemplaza `[RUTA-AL-KEYSTORE]` por `C:/conversa-llaves` (con barras `/`).
 
    Guarda el archivo.
@@ -73,7 +73,7 @@ Te pedirá una contraseña y tus datos (nombre, organización «Andina Music», 
    ```
    `--skipVersionUpgrade` mantiene la versión 1.0.0 (código 1) para la primera subida.
 
-**Alternativa:** en una carpeta vacía, ejecuta `bubblewrap init --manifest https://[DOMINIO-APP]/manifest.webmanifest` y responde las preguntas con los valores de `twa-manifest.json`:
+**Alternativa:** en una carpeta vacía, ejecuta `bubblewrap init --manifest https://app.mutuomatch.com/manifest.webmanifest` y responde las preguntas con los valores de `twa-manifest.json`:
 
 | Pregunta | Valor |
 |---|---|
@@ -112,7 +112,7 @@ Necesitas **dos** huellas. La verificación de la TWA solo funciona si el servid
 
 ## 6. Configurar el servidor
 
-El servidor publica `https://[DOMINIO-APP]/.well-known/assetlinks.json` a partir de dos variables de entorno:
+El servidor publica `https://app.mutuomatch.com/.well-known/assetlinks.json` a partir de dos variables de entorno:
 
 ```
 CONVERSA_ANDROID_PACKAGE=com.andinamusic.conversa
@@ -121,7 +121,7 @@ CONVERSA_ANDROID_SHA256=<huella de firma de apps de Google>,<huella de la llave 
 
 1. Añádelas al archivo de entorno del servidor (por ejemplo `deploy/.env`), con las dos huellas separadas por coma. Confirma el formato exacto con quien implementó esa parte del servidor.
 2. Reinicia Conversa.
-3. Abre `https://[DOMINIO-APP]/.well-known/assetlinks.json` en el navegador: debe mostrar el paquete y las dos huellas, sin redirecciones ni pantallas de Cloudflare.
+3. Abre `https://app.mutuomatch.com/.well-known/assetlinks.json` en el navegador: debe mostrar el paquete y las dos huellas, sin redirecciones ni pantallas de Cloudflare.
 4. Opcional: comprueba con la herramienta de Google «Statement List Generator and Tester» (developers.google.com/digital-asset-links/tools/generator).
 
 ## 7. Comprobar que la verificación funciona

@@ -4,7 +4,7 @@ Dónde: **Play Console → Contenido de la app** (en el menú izquierdo, «Polí
 
 | Declaración | Respuesta para Conversa | Detalle |
 |---|---|---|
-| Política de privacidad | `https://[DOMINIO-APP]/legal/privacidad.html` | Debe abrir sin iniciar sesión y desde cualquier red. |
+| Política de privacidad | `https://app.mutuomatch.com/legal/privacidad.html` | Debe abrir sin iniciar sesión y desde cualquier red. |
 | Acceso a la app | Algunas funciones están restringidas | Cuenta demo: ver `app-access-es.md`. |
 | Anuncios | **No, mi app no contiene anuncios** | Tampoco hay anuncios de terceros dentro de la web que muestra la app. |
 | Clasificación del contenido | Cuestionario IARC | Ver `content-rating-es.md`. |
@@ -16,7 +16,7 @@ Dónde: **Play Console → Contenido de la app** (en el menú izquierdo, «Polí
 | Apps de salud | **Mi app no tiene funciones de salud** | |
 | ID de publicidad | **No**, mi app no usa el ID de publicidad | Conversa no usa bibliotecas de anuncios ni analítica. Después de subir el .aab, confirma en Play Console → Explorador de app bundle → Permisos que no aparece `com.google.android.gms.permission.AD_ID`. |
 | Rastreo de contactos / estado de salud (COVID-19) | **Ninguna de las anteriores** (si aparece) | |
-| Eliminación de la cuenta | `https://[DOMINIO-APP]/legal/eliminar-cuenta.html` | Se pide dentro de «Seguridad de los datos». La app también permite eliminarla en Ajustes → Eliminar cuenta. |
+| Eliminación de la cuenta | `https://app.mutuomatch.com/legal/eliminar-cuenta.html` | Se pide dentro de «Seguridad de los datos». La app también permite eliminarla en Ajustes → Eliminar cuenta. |
 | VPN, servicio en primer plano, intents de pantalla completa, alarmas exactas, permisos de fotos y videos | No aplica | La app solo pide Internet y notificaciones. |
 
 ## Público objetivo y contenido (detalle)

@@ -61,8 +61,8 @@ Para negocios y profesionales mayores de 18 años que atienden a sus clientes po
 AVISO
 Conversa no está afiliada a WhatsApp ni a Meta, ni cuenta con su respaldo. WhatsApp es una marca de WhatsApp LLC.
 
-Política de privacidad: https://[DOMINIO-APP]/legal/privacidad.html
-Términos de uso: https://[DOMINIO-APP]/legal/terminos.html
+Política de privacidad: https://app.mutuomatch.com/legal/privacidad.html
+Términos de uso: https://app.mutuomatch.com/legal/terminos.html
 ```
 
 (Recuento al final de este archivo.)
@@ -76,9 +76,9 @@ Términos de uso: https://[DOMINIO-APP]/legal/terminos.html
 ## Datos de contacto (misma pantalla: Configuración de la tienda)
 
 - **Correo electrónico:** [CORREO DE CONTACTO] (obligatorio y público)
-- **Sitio web:** https://[DOMINIO-APP]
+- **Sitio web:** https://app.mutuomatch.com
 - **Teléfono:** opcional; si lo pones, será público.
-- **Política de privacidad:** https://[DOMINIO-APP]/legal/privacidad.html
+- **Política de privacidad:** https://app.mutuomatch.com/legal/privacidad.html
 
 ## Recursos gráficos
 

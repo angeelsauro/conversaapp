@@ -11,7 +11,7 @@ Las respuestas se basan solo en cómo funciona Conversa hoy. Si cambia algo (por
 | ¿Tu app recopila o comparte alguno de los tipos de datos del usuario obligatorios? | **Sí** |
 | ¿Todos los datos del usuario que recopila tu app están encriptados en tránsito? | **Sí** (HTTPS/TLS entre la app y el servidor; notificaciones cifradas de extremo a extremo) |
 | ¿Qué métodos de creación de cuentas admite tu app? | **Nombre de usuario, contraseña y otro tipo de autenticación** (número de WhatsApp + contraseña + código de vinculación). *Si el registro no exige el código de vinculación, elige «Nombre de usuario y contraseña». Confírmalo con ingeniería.* |
-| Vínculo para solicitar que se borre la cuenta | `https://[DOMINIO-APP]/legal/eliminar-cuenta.html` |
+| Vínculo para solicitar que se borre la cuenta | `https://app.mutuomatch.com/legal/eliminar-cuenta.html` |
 | ¿Proporcionas una forma para que los usuarios soliciten que se borren algunos o todos sus datos sin borrar su cuenta? | **Sí** (pueden borrar chats y respuestas guardadas, desactivar notificaciones y desvincular WhatsApp desde la app) |
 
 ## Paso 2. Tipos de datos

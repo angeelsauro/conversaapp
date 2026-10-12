@@ -8,19 +8,19 @@ Archivos que vas a usar:
 |---|---|
 | Textos de la ficha, gráficos y capturas | carpeta `play/` |
 | Respuestas de los formularios | `play/data-safety-es.md`, `play/app-access-es.md`, `play/content-rating-es.md`, `play/declarations-es.md` |
-| Páginas legales | `public/legal/` (se publican en `https://[DOMINIO-APP]/legal/…`) |
+| Páginas legales | `public/legal/` (se publican en `https://app.mutuomatch.com/legal/…`) |
 | App Android | `android/twa-manifest.json` y `android/README.md` |
 
 ---
 
 ## Probar hoy, sin esperar a Google Play
 
-Requisito para ambas opciones: el servidor actualizado y la app pública abriendo en `https://[DOMINIO-APP]` (sin Cloudflare Access).
+Requisito para ambas opciones: el servidor actualizado y la app pública abriendo en `https://app.mutuomatch.com` (sin Cloudflare Access).
 
-**Opción A, la más rápida (2 minutos):** en el Android, abre `https://[DOMINIO-APP]` en **Chrome** → menú ⋮ → **Instalar app**. Chrome crea una app real (icono, pantalla completa, notificaciones), igual a la de Play por dentro, sin instalar archivos de origen desconocido.
+**Opción A, la más rápida (2 minutos):** en el Android, abre `https://app.mutuomatch.com` en **Chrome** → menú ⋮ → **Instalar app**. Chrome crea una app real (icono, pantalla completa, notificaciones), igual a la de Play por dentro, sin instalar archivos de origen desconocido.
 
 **Opción B, archivo .apk para instalar y compartir (10 minutos, en la PC):**
-1. Abre **pwabuilder.com** (herramienta gratuita de Microsoft), escribe `https://[DOMINIO-APP]` y pulsa **Start**.
+1. Abre **pwabuilder.com** (herramienta gratuita de Microsoft), escribe `https://app.mutuomatch.com` y pulsa **Start**.
 2. **Package for stores → Android → Generate package.** Package ID: `com.andinamusic.conversa`. En **Signing key** deja **Create new**. Descarga el .zip.
 3. Del .zip:
    - `*.apk`: es el archivo para instalar. Pásalo al teléfono, ábrelo y permite «Instalar apps desconocidas» para ese origen.
@@ -31,12 +31,12 @@ Requisito para ambas opciones: el servidor actualizado y la app pública abriend
 
 ## Antes de empezar (comprobaciones)
 
-1. La web está publicada en `https://[DOMINIO-APP]` y **cualquiera** puede abrirla. Si delante hay Cloudflare Access u otro inicio de sesión, la app de Android no funcionará y Google no podrá revisarla.
+1. La web está publicada en `https://app.mutuomatch.com` y **cualquiera** puede abrirla. Si delante hay Cloudflare Access u otro inicio de sesión, la app de Android no funcionará y Google no podrá revisarla.
 2. Ya existen las cuentas de usuario con número y contraseña, **Ajustes → Eliminar cuenta** y la cuenta demo para revisores (ver `play/app-access-es.md`).
 3. Desde tu celular, **con datos móviles**, abren estas tres páginas:
-   - `https://[DOMINIO-APP]/legal/privacidad.html`
-   - `https://[DOMINIO-APP]/legal/terminos.html`
-   - `https://[DOMINIO-APP]/legal/eliminar-cuenta.html`
+   - `https://app.mutuomatch.com/legal/privacidad.html`
+   - `https://app.mutuomatch.com/legal/terminos.html`
+   - `https://app.mutuomatch.com/legal/eliminar-cuenta.html`
 
 ## 1. Completar los datos pendientes
 
@@ -46,7 +46,7 @@ En los archivos hay textos entre corchetes que debes reemplazar. Abre cada archi
 |---|---|---|
 | `[RAZÓN SOCIAL]`, `[RUC]`, `[DIRECCIÓN]` | Datos legales de Andina Music | `public/legal/*.html` |
 | `[CORREO DE CONTACTO]` | Correo de soporte que revises a diario | `public/legal/*.html`, `play/*.md` |
-| `[DOMINIO-APP]` | Dominio de la app, sin `https://` (ej.: `app.tudominio.com`) | todos |
+| `app.mutuomatch.com` | Dominio de la app, sin `https://` (ej.: `app.tudominio.com`) | todos |
 | `[FECHA]` | Fecha de publicación de las páginas (ej.: 15 de octubre de 2026) | `public/legal/*.html` |
 | `[N días]` | **Dos plazos distintos:** cuántos días duran las copias de seguridad, y en cuántos días borras una cuenta pedida por correo | `public/legal/*.html`, `play/data-safety-es.md` |
 | `[Hostinger]`, `[PAÍS DEL SERVIDOR]` | Proveedor del servidor (confirmar) y país donde está | `public/legal/privacidad.html`, `play/data-safety-es.md` |
@@ -73,19 +73,19 @@ Sigue `android/README.md`, pasos 1 a 4. Al final tendrás `C:\conversa-android\a
    - icono: `public/icon-512.png`;
    - gráfico de funciones: `play/feature-graphic.png`;
    - capturas de teléfono: `play/screenshots/01…05` en ese orden.
-2. **Presencia en la tienda → Configuración de la tienda:** categoría **Empresa**, correo [CORREO DE CONTACTO] y sitio web `https://[DOMINIO-APP]`.
+2. **Presencia en la tienda → Configuración de la tienda:** categoría **Empresa**, correo [CORREO DE CONTACTO] y sitio web `https://app.mutuomatch.com`.
 3. Guarda.
 
 ## 5. Contenido de la app (Política y programas → Contenido de la app)
 
 Completa cada tarjeta con las respuestas preparadas:
 
-1. **Política de privacidad:** `https://[DOMINIO-APP]/legal/privacidad.html`.
+1. **Política de privacidad:** `https://app.mutuomatch.com/legal/privacidad.html`.
 2. **Acceso a la app:** cuenta demo → `play/app-access-es.md`.
 3. **Anuncios:** No contiene anuncios.
 4. **Clasificación del contenido:** `play/content-rating-es.md`.
 5. **Público objetivo:** solo **18 años o más** → `play/declarations-es.md`.
-6. **Seguridad de los datos:** `play/data-safety-es.md`. Ahí va la URL de eliminación: `https://[DOMINIO-APP]/legal/eliminar-cuenta.html`.
+6. **Seguridad de los datos:** `play/data-safety-es.md`. Ahí va la URL de eliminación: `https://app.mutuomatch.com/legal/eliminar-cuenta.html`.
 7. **Apps gubernamentales:** No. **Funciones financieras:** ninguna. **Salud:** ninguna. **Noticias:** No. **ID de publicidad:** No.
 
 ## 6. Prueba interna (hoy)
@@ -109,7 +109,7 @@ Sin este paso la app se abre con una barra de navegador arriba.
    CONVERSA_ANDROID_SHA256=<huella de firma de apps>,<huella de subida>
    ```
 3. Reinicia Conversa en el servidor.
-4. Abre `https://[DOMINIO-APP]/.well-known/assetlinks.json`: debe mostrar el paquete y las dos huellas.
+4. Abre `https://app.mutuomatch.com/.well-known/assetlinks.json`: debe mostrar el paquete y las dos huellas.
 
 ## 8. Verificar en un teléfono
 
