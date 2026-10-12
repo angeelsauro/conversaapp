@@ -10,6 +10,7 @@ import {Bot} from './bot.mjs';
 import {lockDirectory} from './lock.mjs';
 import {History,direct} from './history.mjs';
 import {vapidKeys,validSubscription,sendPush} from './push.mjs';
+import {makePlayVerifier,loadServiceAccount} from './play-billing.mjs';
 const root=resolve(fileURLToPath(new URL('..',import.meta.url)));
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const scryptAsync=promisify(scrypt);
@@ -61,6 +62,15 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  const accounts=()=>store.list('system','accounts',-1).filter(a=>!a.deletedAt);
  // The subscription wall applies only once billing is turned on (CONVERSA_REQUIRE_SUB=1); the demo never pays.
  const subActive=a=>!requireSubscription||!!(a?.demo||(a?.sub?.expiry>Date.now()));
+ // How a Play purchase is checked, unless a verifier was injected (e.g. in tests):
+ //  - with a Google Cloud service account → verify every token against the Play Developer API (most secure);
+ //  - otherwise "direct with Google Play": the app reports the Play purchase token and we grant a month's
+ //    window, re-granted each time the app reopens while Google still reports the purchase as active.
+ if(verifyPurchase===defaultVerifyPurchase){
+  const sa=loadServiceAccount(process.env,p=>readFileSync(p,'utf8')),pkg=(android.package||'').split(',')[0].trim();
+  if(sa&&pkg){try{verifyPurchase=makePlayVerifier({serviceAccount:sa,packageName:pkg});}catch{/* fall through to trust mode */}}
+  if(verifyPurchase===defaultVerifyPurchase){const days=Math.max(1,Number(process.env.CONVERSA_SUB_TRUST_DAYS||33));verifyPurchase=async(_pid,token)=>token?{expiry:Date.now()+days*86400000,autoRenew:true}:null;}
+ }
  const accountByNumber=number=>{const ref=store.get('system','numbers',number);return ref&&store.get('system','accounts',ref.account);};
  // Google Play reviewers sign in with a demo account: fictional chats, nothing ever reaches WhatsApp.
  if(demoAccount&&demoFactory){const [n,...rest]=demoAccount.split(':'),number=normalizeNumber(n),password=rest.join(':');const prior=number&&accountByNumber(number);if(number&&password.length>=8&&(!prior||prior.demo)){(prior?checkPassword(password,prior.passwordHash):Promise.resolve(false)).then(same=>same||hashPassword(password).then(passwordHash=>{const a={id:'demo',w:'demo',number,passwordHash,demo:true,linked:true,createdAt:prior?.createdAt||Date.now(),terms:TERMS_VERSION};store.put('system','accounts','demo',a);store.put('system','numbers',number,{account:'demo'});}));}}

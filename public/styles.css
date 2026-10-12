@@ -509,9 +509,9 @@ dialog.lightbox::backdrop{background:#000C}
 .chat-filters button{flex:none}
 
 /* 0.5 · App pública: bienvenida, registro, vinculación con código y cuenta del cliente. */
-body[data-screen=welcome] .shell,body[data-screen=pairing] .shell{display:block;padding:0;min-height:100dvh}
-body[data-screen=welcome] .shell>aside,body[data-screen=pairing] .shell>aside,body[data-screen=welcome] main>header,body[data-screen=pairing] main>header,body[data-screen=welcome] footer,body[data-screen=pairing] footer,body[data-screen=welcome] #error,body[data-screen=pairing] #error{display:none!important}
-body[data-screen=welcome] main,body[data-screen=pairing] main{max-width:none;padding:0;min-height:100dvh}
+body[data-screen=welcome] .shell,body[data-screen=pairing] .shell,body[data-screen=subscribe] .shell{display:block;padding:0;min-height:100dvh}
+body[data-screen=welcome] .shell>aside,body[data-screen=pairing] .shell>aside,body[data-screen=subscribe] .shell>aside,body[data-screen=welcome] main>header,body[data-screen=pairing] main>header,body[data-screen=subscribe] main>header,body[data-screen=welcome] footer,body[data-screen=pairing] footer,body[data-screen=subscribe] footer,body[data-screen=welcome] #error,body[data-screen=pairing] #error,body[data-screen=subscribe] #error{display:none!important}
+body[data-screen=welcome] main,body[data-screen=pairing] main,body[data-screen=subscribe] main{max-width:none;padding:0;min-height:100dvh}
 .welcome{min-height:100dvh;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,440px);align-items:center;gap:56px;padding:56px max(32px,calc((100vw - 1120px)/2));background:radial-gradient(circle at 18% 12%,#2C8A72 0,#0F3B36 38%,#071A18 100%);color:#fff}
 .welcome-logo{border-radius:20px;box-shadow:0 16px 40px #0006}
 .welcome-hero h1{font-size:clamp(32px,4.4vw,54px);line-height:1.08;letter-spacing:-1.6px;margin:26px 0 22px;color:#fff}
@@ -648,3 +648,14 @@ body[data-page=inbox] main>header{justify-content:flex-end;margin-bottom:14px}
 .chat-row.is-pinned.current{background:#EAF5EF}
 [data-theme=dark] .chat-row.is-pinned{background:#13211E}
 [data-theme=dark] .pin-mark{color:#7FE0B5}
+.subscribe-card{text-align:left}
+.subscribe-card>img,.subscribe-card>h1,.subscribe-card>.muted,.subscribe-card .subscribe-price{text-align:center}
+.subscribe-card>img{display:block;margin:0 auto}
+.subscribe-points{list-style:none;padding:0;margin:20px 0;display:grid;gap:12px}
+.subscribe-points li{display:flex;gap:12px;align-items:center;font-size:15px;line-height:1.4}
+.subscribe-points .icon{width:28px;height:28px;padding:6px;border-radius:9px;background:rgba(23,107,89,.12);color:var(--blue);flex:none}
+.subscribe-price{font-size:22px;font-weight:700;margin:4px 0 16px;color:var(--blue)}
+#subscribe-buy{width:100%}
+.subscribe-card .toolbar.centered{margin-top:14px;gap:16px;flex-wrap:wrap}
+.subscribe-card .welcome-legal{color:var(--muted);margin-top:16px}
+.subscribe-card .welcome-legal a{color:inherit}

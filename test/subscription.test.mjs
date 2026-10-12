@@ -51,6 +51,18 @@ test('verifying a Google purchase unlocks the account; an expired one keeps it l
  assert.equal((await api('POST','/api/connect',{cookie:c,body:{}})).status,402);
 });
 
+test('direct Google Play (trust mode): the app reports a purchase token and unlocks without a service account',async t=>{
+ const {api,signup}=await boot(t);// no verifier injected and no service account → trust mode
+ const c=await signup('51988880003');
+ assert.equal((await api('GET','/api/state',{cookie:c})).json.subscription.active,false);
+ // An empty token never unlocks.
+ assert.equal((await api('POST','/api/subscription/verify',{cookie:c,body:{token:''}})).status,400);
+ // A reported Play token unlocks for about a month and functional routes open up.
+ const r=await api('POST','/api/subscription/verify',{cookie:c,body:{token:'play-token-xyz'}});
+ assert.equal(r.status,200);assert.equal(r.json.active,true);assert.ok(r.json.expiry>Date.now()+20*86400000,'grants about a month');
+ assert.equal((await api('POST','/api/connect',{cookie:c,body:{}})).status,200,'unlocked');
+});
+
 test('the reviewer demo account and the owner are never walled off',async t=>{
  const demoFactory=(store,w)=>demoConnector(store,{History,workspace:w});
  const {api,panel,owner}=await boot(t,{demoAccount:'51900000000:ConversaDemo2026',demoFactory});

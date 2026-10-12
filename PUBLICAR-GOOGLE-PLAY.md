@@ -121,6 +121,51 @@ Instala la app desde el enlace de prueba interna y comprueba:
 4. Con una cuenta de prueba, **Ajustes → Eliminar cuenta** borra la cuenta.
 5. La cuenta demo de los revisores entra y muestra datos ficticios.
 
+## 8.5. Suscripción mensual (activar el cobro)
+
+La app es de pago: para usarla hace falta una suscripción mensual. **Google Play cobra solo** (pantalla de pago, tarjeta, renovación, cancelaciones, reembolsos e impuestos); tú nunca ves datos de tarjetas. La app solo comprueba, en el teléfono, que la suscripción esté activa para desbloquear el acceso.
+
+### a) Crear el producto de suscripción en Play Console
+
+1. **Monetiza con Play → Productos → Suscripciones → Crear suscripción.**
+2. **ID del producto:** `conversa_mensual` *(tiene que ser exactamente este: es el que usa el servidor; si usas otro, cámbialo también en `CONVERSA_SUB_PRODUCT`).*
+3. Nombre y descripción (por ejemplo «Conversa mensual»). Crea un **plan base** mensual con **renovación automática** y ponle el **precio** (por ejemplo US$ 4.99).
+4. **Activa** la suscripción y el plan base. Una suscripción inactiva no se puede comprar.
+
+### b) Subir la app con facturación
+
+La compra dentro de la app solo funciona con un `.aab` que tenga la **facturación activada** (ya está en `android/twa-manifest.json`: `playBilling`). Vuelve a compilar siguiendo `android/README.md` (el `versionName` es ahora `1.1.0` y el `versionCode` `4`; si Play dice que ese código ya se usó, súbelo a `5`, `6`…). Súbelo primero a **prueba interna/cerrada**: la facturación solo funciona cuando la app se instala **desde Google Play** (no con un `.apk` suelto).
+
+### c) Encender el muro de pago en el servidor
+
+En el archivo de entorno del servidor (por ejemplo `deploy/.env`):
+
+```
+CONVERSA_REQUIRE_SUB=1
+CONVERSA_SUB_PRODUCT=conversa_mensual
+```
+
+Reinicia Conversa. Desde ese momento, toda cuenta de cliente que no tenga suscripción activa verá la pantalla **«Suscripción mensual»** y no podrá usar la app hasta pagar. *(Si ya tenías usuarios en la versión gratis, quedarán bloqueados hasta que se suscriban: es lo esperado en un lanzamiento de pago.)*
+
+- La **cuenta demo de los revisores nunca paga** ni ve el muro (así Google puede revisar). Mantén `CONVERSA_DEMO_ACCOUNT` puesta y en **Contenido de la app → Acceso a la app** indica que el revisor entre con esa cuenta. Sin esto, el revisor choca con el muro y puede rechazar la app.
+- El **panel del propietario** tampoco tiene muro.
+
+### d) Probar la compra sin gastar dinero
+
+En **Configuración → Pruebas de licencias** agrega los correos de Gmail de tu equipo como **testers de licencia**. Instalada la app desde la pista de prueba, esos correos pueden «comprar» la suscripción sin que se les cobre, y comprobar que al pagar se desbloquea la app.
+
+### e) (Opcional, más seguro) Verificación en tu servidor
+
+Elegiste la comprobación **directa con Google Play** (la app pregunta en el teléfono). Si algún día quieres blindarla para que nadie falsifique el pago, crea una **cuenta de servicio** gratuita en Google Cloud con permiso de **androidpublisher**, enlázala en Play Console (**Usuarios y permisos**), y en el servidor pon una de estas dos (y reinicia):
+
+```
+CONVERSA_GOOGLE_SA=/ruta/al/service-account.json
+# o, en una sola línea, el JSON completo:
+CONVERSA_GOOGLE_SA_JSON={"type":"service_account",...}
+```
+
+Con eso el servidor verifica cada compra con Google antes de desbloquear. No hay que tocar la app.
+
 ## 9. Producción
 
 1. **Probar y publicar → Producción → Países:** agrega Perú y los países donde puedas dar soporte.

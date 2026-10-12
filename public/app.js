@@ -7,7 +7,7 @@ const titles={connection:'Ajustes',inbox:'Chats',bot:'Mi bot'};
 const date=t=>new Intl.DateTimeFormat('es',{dateStyle:'short',timeStyle:'short'}).format(new Date(t));
 function page(name){for(const section of document.querySelectorAll('.page'))section.hidden=section.id!==name;for(const button of document.querySelectorAll('.nav')){button.classList.toggle('active',button.dataset.page===name);if(button.dataset.page===name)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}$('page-title').textContent=titles[name];document.body.dataset.page=name;if(name==='connection')updatePushCard();syncChatFocus();window.scrollTo({top:0,behavior:'instant'});}
 document.addEventListener('click',e=>{const button=e.target.closest('[data-page]');if(button)page(button.dataset.page);});
-async function api(path,input={},{keepalive=false}={}){const res=await fetch('/api/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),keepalive,signal:AbortSignal.timeout(35000)});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'No se pudo completar la acción ('+res.status+').');return data;}
+async function api(path,input={},{keepalive=false}={}){const res=await fetch('/api/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),keepalive,signal:AbortSignal.timeout(35000)});const data=await res.json().catch(()=>({}));if(res.status===402&&data.subscribe){Promise.resolve().then(refresh);throw new Error(data.error||'Necesitas una suscripción activa.');}if(!res.ok)throw new Error(data.error||'No se pudo completar la acción ('+res.status+').');return data;}
 function ask(text,ok='Confirmar',danger=false){return new Promise(resolve=>{const d=$('confirm-generic');$('confirm-text').textContent=text;$('confirm-ok').textContent=ok;$('confirm-ok').className=danger?'danger':'primary';d.onclose=()=>resolve(d.returnValue==='ok');d.returnValue='';d.showModal();});}
 $('confirm-cancel').onclick=()=>$('confirm-generic').close('cancel');$('confirm-ok').onclick=()=>$('confirm-generic').close('ok');
 // Short-lived floating notices (bottom of the screen) instead of lines of text in the layout.
@@ -34,7 +34,7 @@ $('review-cancel').onclick=()=>$('review-chat').close();$('review-confirm').oncl
 $('bot-toggle').onclick=async()=>{if(!state.bot.enabled&&!await ask('¿Activar el bot? Enviará tus textos guardados, sin cambios, a los chats nuevos que hayas revisado cuando un mensaje coincida con sus palabras clave.','Activar bot'))return;action('bot/config',{enabled:!state.bot.enabled});};
 $('preview-form').onsubmit=async e=>{e.preventDefault();$('preview-result').textContent='Preparando respuesta…';const result=await action('bot/preview',{text:$('preview-question').value});$('preview-result').textContent=result ? (result.text||'Sin una coincidencia única: el bot no enviará ningún mensaje y pasará el chat a revisión.') : 'No se pudo completar la prueba.';};
 // Screens: owner sign-in, client welcome, WhatsApp pairing, or the app itself.
-function showScreen(name){document.body.dataset.screen=name;$('locked').hidden=name!=='locked';$('welcome').hidden=name!=='welcome';$('pairing').hidden=name!=='pairing';$('workspace').hidden=name!=='app';}
+function showScreen(name){document.body.dataset.screen=name;$('locked').hidden=name!=='locked';$('welcome').hidden=name!=='welcome';$('pairing').hidden=name!=='pairing';$('subscribe').hidden=name!=='subscribe';$('workspace').hidden=name!=='app';}
 function welcomeError(message){$('welcome-error').textContent=message||'';$('welcome-error').hidden=!message;}
 function welcomeTab(name){for(const [tab,form] of [['tab-signup','signup-form'],['tab-login','client-login']]){const on=form===name;$(tab).setAttribute('aria-selected',String(on));$(tab).classList.toggle('selected',on);$(form).hidden=!on;}$('recover-form').hidden=name!=='recover-form';welcomeError('');}
 $('tab-signup').onclick=()=>welcomeTab('signup-form');$('tab-login').onclick=()=>welcomeTab('client-login');
@@ -55,6 +55,56 @@ function renderPairing(){const c=state.connection,code=c.pairingCode;$('pairing-
 $('pairing-copy').onclick=()=>{const code=state?.connection.pairingCode;if(code)copyText(code.replace('-',''),'Código copiado.').then(()=>{$('pairing-status').textContent='Código copiado. Pégalo en WhatsApp.';});};
 $('pairing-retry').onclick=async()=>{busy=true;try{await api('connect');}catch(e){$('pairing-status').textContent=e.message;}finally{busy=false;}refresh();};
 $('pairing-logout').onclick=()=>$('logout').onclick();
+// Subscription: Google Play handles the money; the app checks the purchase on the device (Digital Goods API).
+const PLAY_BILLING='https://play.google.com/billing';
+async function playBilling(){try{if('getDigitalGoodsService'in window)return await window.getDigitalGoodsService(PLAY_BILLING);}catch{}return null;}
+const subProduct=()=>state?.subscription?.productId||'conversa_mensual';
+function priceText(p){if(!p)return'';try{return new Intl.NumberFormat('es',{style:'currency',currency:p.currency}).format(Number(p.value));}catch{return (p.value||'')+' '+(p.currency||'');}}
+let billingSyncing=false;
+async function renderSubscribe(){
+ $('subscribe-error').hidden=true;$('subscribe-note').textContent='';
+ const svc=await playBilling();
+ if(!svc){$('subscribe-price').textContent='Suscripción mensual';$('subscribe-buy').disabled=true;$('subscribe-note').textContent='Instala Conversa desde Google Play para suscribirte.';return;}
+ $('subscribe-buy').disabled=false;
+ try{const d=await svc.getDetails([subProduct()]);const item=d&&d[0];$('subscribe-price').textContent=item?.price?priceText(item.price)+' al mes':'Suscripción mensual';}catch{$('subscribe-price').textContent='Suscripción mensual';}
+ syncBilling();// restore silently if they already bought it (reinstall, new device)
+}
+// Reads any existing Google Play purchase and reports its token so the server unlocks. Safe to call every load.
+async function syncBilling(){
+ if(billingSyncing||state?.role!=='client'||state?.account?.demo)return;
+ const svc=await playBilling();if(!svc||!svc.listPurchases)return;
+ billingSyncing=true;
+ try{const purchases=await svc.listPurchases();const mine=purchases.find(p=>p.itemId===subProduct())||purchases[0];
+  if(mine?.purchaseToken){const r=await api('subscription/verify',{token:mine.purchaseToken}).catch(()=>null);if(r?.active&&!state?.subscription?.active)await refresh();}
+ }catch{}finally{billingSyncing=false;}
+}
+$('subscribe-buy').onclick=async()=>{
+ $('subscribe-error').hidden=true;
+ const svc=await playBilling();
+ if(!svc||!('PaymentRequest'in window)){$('subscribe-error').textContent='Instala Conversa desde Google Play para suscribirte.';$('subscribe-error').hidden=false;return;}
+ $('subscribe-buy').disabled=true;
+ try{
+  const pr=new PaymentRequest([{supportedMethods:PLAY_BILLING,data:{sku:subProduct()}}],{total:{label:'Suscripción mensual',amount:{currency:'USD',value:'0'}}});
+  const resp=await pr.show();
+  const r=await api('subscription/verify',{token:resp.details?.token}).catch(e=>({error:e.message}));
+  const ok=!!(r&&r.active);
+  await resp.complete(ok?'success':'fail').catch(()=>{});
+  if(ok){notice('¡Suscripción activada!');await refresh();return;}
+  throw new Error(r?.error||'No pudimos confirmar el pago. Si se te cobró, toca «Ya pagué».');
+ }catch(e){if(e&&e.name==='AbortError')return;$('subscribe-error').textContent=e.message||'No se pudo completar la compra.';$('subscribe-error').hidden=false;}
+ finally{$('subscribe-buy').disabled=false;}
+};
+$('subscribe-restore').onclick=async()=>{
+ $('subscribe-error').hidden=true;$('subscribe-restore').disabled=true;
+ try{const svc=await playBilling();let token=null;
+  if(svc&&svc.listPurchases){const purchases=await svc.listPurchases().catch(()=>[]);const mine=purchases.find(p=>p.itemId===subProduct())||purchases[0];token=mine?.purchaseToken||null;}
+  const r=await api(token?'subscription/verify':'subscription/refresh',token?{token}:{}).catch(e=>({error:e.message}));
+  if(r&&r.active){notice('Suscripción restaurada.');await refresh();return;}
+  throw new Error(r?.error||'No encontramos una suscripción activa en este dispositivo.');
+ }catch(e){$('subscribe-error').textContent=e.message||'No se pudo restaurar.';$('subscribe-error').hidden=false;}
+ finally{$('subscribe-restore').disabled=false;}
+};
+$('subscribe-logout').onclick=()=>$('logout').onclick();
 // Client account: change password, sign out, delete the account (with its data and the WhatsApp link).
 $('account-logout').onclick=()=>$('logout').onclick();
 $('account-password').onclick=()=>{$('password-error').hidden=true;$('password-form').reset();$('password-dialog').showModal();};
@@ -67,6 +117,9 @@ $('delete-form').onsubmit=async e=>{e.preventDefault();try{await api('account/de
 let refreshing=null,refreshAgain=false,lastRefreshAt=0,events=null,eventsOpen=false,changeTimer=null;
 async function refresh(){if(refreshing){refreshAgain=true;return refreshing;}refreshing=(async()=>{try{do{refreshAgain=false;await loadState();}while(refreshAgain);}finally{refreshing=null;}})();return refreshing;}
 async function loadState(){try{const res=await fetch('/api/state',{signal:AbortSignal.timeout(8000)});lastRefreshAt=Date.now();if(res.status===401){online=false;stopListening();state=null;showScreen(appMode?'welcome':'locked');$('global-status').textContent='Acceso privado';return;}if(!res.ok)throw new Error();state=await res.json();const recovered=!online;online=true;if(recovered){error('');presence();}
+ // A client with billing on must have an active subscription before anything else (pay, then pair).
+ if(state.role==='client'&&state.subscription?.required&&!state.subscription.active){showScreen('subscribe');renderSubscribe();listen();return;}
+ if(state.role==='client'&&state.subscription?.required)syncBilling();
  // A client account that has not linked WhatsApp yet sees only the pairing screen.
  if(state.role==='client'&&!state.account.linked){showScreen('pairing');renderPairing();listen();return;}
  showScreen('app');render();listen();}catch{const was=online;online=false;$('global-status').textContent='Sin servidor';$('global-status').className='badge neutral';document.querySelectorAll('.device-actions button').forEach(b=>b.disabled=true);$('bot-toggle').disabled=true;if(was)error('Sin conexión con el servidor');}}

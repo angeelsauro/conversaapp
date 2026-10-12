@@ -71,7 +71,7 @@ Te pedirá una contraseña y tus datos (nombre, organización «Andina Music», 
    ```powershell
    bubblewrap update --skipVersionUpgrade
    ```
-   `--skipVersionUpgrade` mantiene la versión 1.0.0 (código 1) para la primera subida.
+   `--skipVersionUpgrade` conserva la versión del archivo (ahora `1.1.0`, código `4`, con **facturación de Google Play** activada para la suscripción).
 
 **Alternativa:** en una carpeta vacía, ejecuta `bubblewrap init --manifest https://app.mutuomatch.com/manifest.webmanifest` y responde las preguntas con los valores de `twa-manifest.json`:
 
@@ -82,10 +82,12 @@ Te pedirá una contraseña y tus datos (nombre, organización «Andina Music», 
 | Display mode / Orientation | `standalone` / `portrait` |
 | Status bar color / Splash color | `#123F3C` / `#0C2E2B` |
 | Starting URL | `/` |
-| Play Billing / Geolocalización | No / No |
+| Play Billing / Geolocalización | **Sí** / No |
 | Key store | la llave del paso 2 (`C:\conversa-llaves\conversa-upload.keystore`, alias `conversa-upload`) |
 
-Después abre el `twa-manifest.json` generado, comprueba que diga `"enableNotifications": true`, `"fallbackType": "customtabs"`, `"minSdkVersion": 21` y `"appVersionCode": 1`, y si cambiaste algo ejecuta `bubblewrap update --skipVersionUpgrade`.
+Después abre el `twa-manifest.json` generado, comprueba que diga `"enableNotifications": true`, `"fallbackType": "customtabs"`, `"minSdkVersion": 24`, `"appVersionCode": 4`, `"features": { "playBilling": { "enabled": true } }` y `"alphaDependencies": { "enabled": true }` (estos dos últimos son los que habilitan la suscripción), y si cambiaste algo ejecuta `bubblewrap update --skipVersionUpgrade`.
+
+> La facturación (`playBilling`) solo funciona cuando la app se instala **desde Google Play** (prueba interna/cerrada o producción), no con un `.apk` suelto. Para activar el cobro en el servidor y crear el producto `conversa_mensual`, sigue la sección **8.5** de `PUBLICAR-GOOGLE-PLAY.md`.
 
 ## 4. Compilar
 

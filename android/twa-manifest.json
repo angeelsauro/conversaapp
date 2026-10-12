@@ -23,17 +23,21 @@
     "path": "[RUTA-AL-KEYSTORE]/conversa-upload.keystore",
     "alias": "conversa-upload"
   },
-  "appVersionName": "1.0.0",
-  "appVersionCode": 1,
+  "appVersionName": "1.1.0",
+  "appVersionCode": 4,
   "minSdkVersion": 24,
   "fallbackType": "customtabs",
   "enableSiteSettingsShortcut": true,
   "isChromeOSOnly": false,
   "isMetaQuest": false,
   "shortcuts": [],
-  "features": {},
+  "features": {
+    "playBilling": {
+      "enabled": true
+    }
+  },
   "alphaDependencies": {
-    "enabled": false
+    "enabled": true
   },
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
