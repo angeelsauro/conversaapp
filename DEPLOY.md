@@ -34,6 +34,17 @@ El segundo argumento, opcional, son las IP o rangos CIDR que pueden abrir el pan
 
 Comprobarlo siempre desde fuera, por ejemplo desde los datos móviles con la VPN apagada: debe responder «Acceso restringido». Si Docker publica los puertos con su proxy de espacio de usuario (por ejemplo, con IPv6 o sin iptables), Caddy ve la IP de la puerta de enlace de Docker y no la del cliente. En ese caso la lista no protege nada. Nunca añadir la puerta de enlace de Docker a la lista. Una VPN o un firewall del proveedor siguen siendo la opción recomendada para administración restringida.
 
+### Suscripción mensual (muro de pago)
+
+Para cobrar con Google Play, crear el producto `conversa_mensual` en Play Console (ver `PUBLICAR-GOOGLE-PLAY.md`, sección 8.5) y, en `deploy/.env`:
+
+```
+CONVERSA_REQUIRE_SUB=1
+CONVERSA_SUB_PRODUCT=conversa_mensual
+```
+
+Recrear el contenedor: `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d conversa`. Desde ese momento, toda cuenta de cliente sin suscripción activa ve la pantalla de pago; la cuenta demo (`CONVERSA_DEMO_ACCOUNT`) y el panel del propietario nunca se bloquean. La comprobación es «directa con Google Play» por defecto; para la verificación en el servidor (opción B), poner el JSON de la cuenta de servicio en una sola línea en `CONVERSA_GOOGLE_SA_JSON`.
+
 ### Endpoints de prueba
 
 Con `NODE_ENV=production`, que es el valor de la imagen, /api/bot/test y /api/chat/send-standard-once responden 404. Para una prueba real puntual y autorizada, definir `CONVERSA_TEST_ENDPOINTS: "on"` en el servicio `conversa` de compose, recrear el contenedor y quitarlo al terminar.

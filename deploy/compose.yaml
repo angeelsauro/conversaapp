@@ -15,6 +15,11 @@ services:
       CONVERSA_ANDROID_PACKAGE: ${CONVERSA_ANDROID_PACKAGE:-}
       CONVERSA_ANDROID_SHA256: ${CONVERSA_ANDROID_SHA256:-}
       CONVERSA_DEMO_ACCOUNT: ${CONVERSA_DEMO_ACCOUNT:-}
+      # Suscripción mensual de Google Play. Encender el muro de pago: CONVERSA_REQUIRE_SUB=1 en deploy/.env.
+      CONVERSA_REQUIRE_SUB: ${CONVERSA_REQUIRE_SUB:-}
+      CONVERSA_SUB_PRODUCT: ${CONVERSA_SUB_PRODUCT:-conversa_mensual}
+      # Opcional (verificación en el servidor, "opción B"): JSON de la cuenta de servicio de Google, en una sola línea.
+      CONVERSA_GOOGLE_SA_JSON: ${CONVERSA_GOOGLE_SA_JSON:-}
       CONVERSA_KEY_FILE: /run/secrets/encryption_key
       CONVERSA_OWNER_TOKEN_FILE: /run/secrets/owner_token
     volumes:
