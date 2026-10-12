@@ -26,11 +26,14 @@ async function hashPassword(password){const salt=randomBytes(16),key=await scryp
 async function checkPassword(password,stored){if(typeof password!=='string'||typeof stored!=='string')return false;const [,salt,key]=stored.split('$');const got=await scryptAsync(password,Buffer.from(salt,'base64'),32,{N:16384,r:8,p:1,maxmem:64*1048576}),want=Buffer.from(key,'base64');return got.length===want.length&&timingSafeEqual(got,want);}
 const TERMS_VERSION='2026-10-09';
 // Custom brand (name + logo): for now only the owner (super admin); later a paid option for client accounts.
+// Verifies a Google Play subscription purchase token. Real Google verification is wired in phase 3 with a
+// service account; without it (or in tests, where a mock is injected) it cannot confirm a purchase.
+async function defaultVerifyPurchase(){return null;}
 const brandAllowed=ctx=>ctx?.role==='owner'||(ctx?.role==='client'&&!!ctx.account?.pro&&!ctx.account?.demo);
 const pngSize=b=>b.length>24&&b.readUInt32BE(0)===0x89504e47&&b.readUInt32BE(4)===0x0d0a1a0a&&b.toString('latin1',12,16)==='IHDR'?[b.readUInt32BE(16),b.readUInt32BE(20)]:null;
 // Rate limits count IPv4 clients by address and IPv6 clients by /64 (one home or mobile network).
 export function clientKey(ip){ip=String(ip||'').split('%')[0];const v4=/^(?:::ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);if(v4)return v4[1];if(!ip.includes(':'))return ip;const [head,tail='']=ip.split('::'),a=head?head.split(':'):[],b=tail?tail.split(':'):[],full=[...a,...Array(Math.max(0,8-a.length-b.length)).fill('0'),...b];return full.slice(0,4).map(x=>(x.toLowerCase().replace(/^0+(?=.)/,''))).join(':')+'::/64';}
-export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data'),port=4318,connectorFactory,respond,publicOrigin=process.env.PUBLIC_ORIGIN||undefined,appOrigin=process.env.APP_ORIGIN||undefined,testEndpoints=testEndpointsEnabled(),pushSender=sendPush,avatarFetch=globalThis.fetch,maxAccounts=Number(process.env.CONVERSA_MAX_ACCOUNTS||30),trustProxyIp=process.env.CONVERSA_TRUST_CF==='1',android={package:process.env.CONVERSA_ANDROID_PACKAGE,sha256:process.env.CONVERSA_ANDROID_SHA256},demoAccount=process.env.CONVERSA_DEMO_ACCOUNT||undefined,demoFactory}={}) {
+export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data'),port=4318,connectorFactory,respond,publicOrigin=process.env.PUBLIC_ORIGIN||undefined,appOrigin=process.env.APP_ORIGIN||undefined,testEndpoints=testEndpointsEnabled(),pushSender=sendPush,avatarFetch=globalThis.fetch,maxAccounts=Number(process.env.CONVERSA_MAX_ACCOUNTS||30),trustProxyIp=process.env.CONVERSA_TRUST_CF==='1',android={package:process.env.CONVERSA_ANDROID_PACKAGE,sha256:process.env.CONVERSA_ANDROID_SHA256},demoAccount=process.env.CONVERSA_DEMO_ACCOUNT||undefined,demoFactory,verifyPurchase=defaultVerifyPurchase,subProductId=process.env.CONVERSA_SUB_PRODUCT||'conversa_mensual',requireSubscription=process.env.CONVERSA_REQUIRE_SUB==='1'}={}) {
  const production=process.env.NODE_ENV==='production';
  if(production&&(!publicOrigin?.startsWith('https://')||!process.env.CONVERSA_KEY_FILE||!process.env.CONVERSA_OWNER_TOKEN_FILE))throw new Error('Production requires HTTPS origin and external secret files');
  for(const o of [publicOrigin,appOrigin])if(o&&new URL(o).origin!==o)throw new Error('PUBLIC_ORIGIN and APP_ORIGIN must be exact origins');
@@ -56,6 +59,8 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  const owner=makeTenant('owner'),connector=owner.connector,bot=owner.bot;
  const tenantOf=account=>tenants.get(account.w)||makeTenant(account.w,account);
  const accounts=()=>store.list('system','accounts',-1).filter(a=>!a.deletedAt);
+ // The subscription wall applies only once billing is turned on (CONVERSA_REQUIRE_SUB=1); the demo never pays.
+ const subActive=a=>!requireSubscription||!!(a?.demo||(a?.sub?.expiry>Date.now()));
  const accountByNumber=number=>{const ref=store.get('system','numbers',number);return ref&&store.get('system','accounts',ref.account);};
  // Google Play reviewers sign in with a demo account: fictional chats, nothing ever reaches WhatsApp.
  if(demoAccount&&demoFactory){const [n,...rest]=demoAccount.split(':'),number=normalizeNumber(n),password=rest.join(':');const prior=number&&accountByNumber(number);if(number&&password.length>=8&&(!prior||prior.demo)){(prior?checkPassword(password,prior.passwordHash):Promise.resolve(false)).then(same=>same||hashPassword(password).then(passwordHash=>{const a={id:'demo',w:'demo',number,passwordHash,demo:true,linked:true,createdAt:prior?.createdAt||Date.now(),terms:TERMS_VERSION};store.put('system','accounts','demo',a);store.put('system','numbers',number,{account:'demo'});}));}}
@@ -167,9 +172,12 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     // Routes that read a workspace's whole message store: generous for a person, a wall for a script.
     if(['/api/chat/messages','/api/chat/media','/api/contact'].includes(path)&&limited('heavy|'+w,240,60000))return json(429,{error:'Demasiadas solicitudes. Espera un momento.'});
     if(path==='/api/export'&&limited('export|'+w,5,600000))return json(429,{error:'Exportaste hace poco. Inténtalo en unos minutos.'});
+    // Subscription wall: a client without an active subscription can only see its state and the subscribe screen.
+    if(ctx.role==='client'&&!subActive(ctx.account)&&!['/api/state','/api/subscription'].includes(path))return json(402,{error:'Necesitas una suscripción activa.',subscribe:true});
+    if(path==='/api/subscription')return json(200,{active:ctx.role==='client'?subActive(ctx.account):true,expiry:ctx.account?.sub?.expiry||null,required:requireSubscription&&ctx.role==='client'&&!ctx.account.demo,productId:subProductId});
     if(path==='/api/state'){const pending=ctx.role==='client'&&!ctx.account.linked;
      return json(200,{connection:c.snapshot(),messages:pending?[]:store.list(w,'messages',100).map(m=>({...lite(m),conversationJid:c.history.canonical(m.jid)})),totalMessages:store.count(w,'messages'),chats:pending?[]:store.list(w,'chats',2000),totalChats:store.count(w,'chats'),bot:{...b.config(),aiAvailable:!!respond},queue:store.list(w,'queue',100).map(j=>({state:j.state,timestamp:j.timestamp})),checkedAt:Date.now(),
-      workspace:ctx.role==='owner'?{name:'Mi espacio',mode:'Privado • un propietario'}:{name:'+'+ctx.account.number,mode:ctx.account.demo?'Cuenta de demostración':'Tu cuenta'},role:ctx.role,account:ctx.role==='client'?{number:ctx.account.number,linked:!!ctx.account.linked,demo:!!ctx.account.demo,createdAt:ctx.account.createdAt}:null,
+      workspace:ctx.role==='owner'?{name:'Mi espacio',mode:'Privado • un propietario'}:{name:'+'+ctx.account.number,mode:ctx.account.demo?'Cuenta de demostración':'Tu cuenta'},role:ctx.role,account:ctx.role==='client'?{number:ctx.account.number,linked:!!ctx.account.linked,demo:!!ctx.account.demo,createdAt:ctx.account.createdAt}:null,subscription:ctx.role==='client'?{active:subActive(ctx.account),expiry:ctx.account.sub?.expiry||null,required:requireSubscription&&!ctx.account.demo,productId:subProductId}:null,
       brand:(b=>b?{name:b.name,icon:!!b.icon192,updatedAt:b.updatedAt}:null)(brandAllowed(ctx)?store.get(w,'settings','brand'):null),brandEditable:brandAllowed(ctx),ownerPin:ctx.role==='owner'?!!store.get('owner','settings','pin'):undefined,
       notifications:{devices:store.count(w,'push'),preview:store.get(w,'settings','push')?.preview!==false},tests:ctx.role==='owner'&&testEndpoints,keywordTest:ctx.role==='owner'?(t=>t&&{jid:t.jid,expiresAt:t.expiresAt,consumedAt:t.consumedAt||null})(store.get(w,'settings','keyword-test')):null});}
     if(path==='/api/messages'){const offset=Math.max(0,Math.min(10000000,Number(url.searchParams.get('offset'))||0));return json(200,{messages:store.list(w,'messages',100,offset).map(m=>({...lite(m),conversationJid:c.history.canonical(m.jid)})),total:store.count(w,'messages')});}
@@ -312,6 +320,8 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     return json(404,{error:'Ruta no encontrada.'});
    }
    if(!ctx)return json(401,{error:'Tu sesión terminó. Vuelve a entrar.'});
+   // Subscription routes stay open; every other action needs an active subscription.
+   if(ctx.role==='client'&&!subActive(ctx.account)&&!['/api/logout','/api/revoke-sessions','/api/account/delete','/api/account/password','/api/subscription/verify','/api/subscription/refresh'].includes(path))return json(402,{error:'Necesitas una suscripción activa.',subscribe:true});
    // Logging out (or revoking every session) also stops that device's notifications and clears what the browser cached.
    if(path==='/api/logout'){store.remove(ctx.role==='owner'?'owner':'system','sessions',sidHash);for(const k of visible.keys())if(k.startsWith(w+'|'+sidHash))visible.delete(k);endStreams(s=>s.sid===sidHash);for(const sub of store.list(w,'push',-1))if(sub.session===sidHash)store.remove(w,'push',sub.id);res.setHeader('Set-Cookie',cookie('',0));res.setHeader('Clear-Site-Data','"cache"');}
    else if(path==='/api/revoke-sessions'){if(ctx.role==='owner')store.clear('owner','sessions');else dropSessions(ctx.account);store.clear(w,'push');for(const k of visible.keys())if(k.startsWith(w+'|'))visible.delete(k);endStreams(s=>s.w===w);res.setHeader('Set-Cookie',cookie('',0));res.setHeader('Clear-Site-Data','"cache"');}
@@ -339,6 +349,19 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     const t=tenants.get(a.w);if(t)t.accountPro=pro;
     if(!pro)store.remove(a.w,'settings','brand');// turning Pro off also clears their custom brand
     changed(a.w);return json(200,{id:a.id,pro});
+   }
+   else if(path==='/api/subscription/verify'||path==='/api/subscription/refresh'){
+    // The app sends the Google Play purchase token after a successful purchase (or to refresh on renewal).
+    if(ctx.role!=='client')return json(404,{error:'Ruta no encontrada.'});
+    if(ctx.account.demo)return json(200,{active:true,expiry:null});
+    if(limited('sub|'+ctx.account.id,20,3600000))return json(429,{error:'Demasiados intentos. Espera unos minutos.'});
+    const token=path.endsWith('verify')?input.token:ctx.account.sub?.token;
+    if(typeof token!=='string'||!token||token.length>4000)return json(400,{error:'Falta la compra.'});
+    let result=null;try{result=await verifyPurchase(subProductId,token);}catch{result=null;}
+    const fresh=store.get('system','accounts',ctx.account.id);if(!fresh)return json(401,{error:'Tu sesión terminó. Vuelve a entrar.'});
+    if(!result||!(result.expiry>Date.now())){store.put('system','accounts',fresh.id,{...fresh,sub:{token,expiry:result?.expiry||0,status:'inactive',checkedAt:Date.now()}});changed(fresh.w);return json(402,{active:false,error:'No encontramos una suscripción activa.'});}
+    store.put('system','accounts',fresh.id,{...fresh,sub:{token,expiry:result.expiry,autoRenew:!!result.autoRenew,productId:subProductId,status:'active',checkedAt:Date.now()}});changed(fresh.w);
+    return json(200,{active:true,expiry:result.expiry});
    }
    else if(path==='/api/owner/pin'){
     // A short PIN to enter the private panel from a phone; the long private code keeps working.

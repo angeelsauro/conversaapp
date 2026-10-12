@@ -83,6 +83,15 @@ En producción, cada dirección solo acepta su tipo de acceso. En local, `127.0.
 - **Lecturas pesadas:** /api/chat/messages, /api/chat/media y /api/contact admiten 240 por minuto por espacio; /api/export, 5 cada 10 minutos.
 - **POST /api/presence:** como máximo 6 pestañas por sesión.
 
+## Suscripción mensual (fase 1, apagada por defecto)
+
+Con `CONVERSA_REQUIRE_SUB=1`, una cuenta de cliente sin suscripción activa queda bloqueada: `/api/state` y `/api/subscription` responden, y todo lo demás da **402** `{subscribe:true}`. El dueño y la cuenta demo nunca se bloquean.
+
+- **GET /api/subscription:** {active, expiry, required, productId}.
+- **POST /api/subscription/verify {token}:** envía el token de compra de Google Play; el servidor lo verifica (fase 3) y, si hay suscripción activa, desbloquea la cuenta. **/refresh** re-verifica el token guardado (renovación o cancelación).
+- `/api/state` añade `subscription` para que la app muestre la pantalla de pago.
+- Sin `CONVERSA_REQUIRE_SUB=1`, no hay muro (la app funciona como siempre).
+
 ## Marca propia (0.5.1, solo propietario)
 
 - **POST /api/brand {name, icon192?, icon512?}:** nombre (1 a 30 caracteres) y logo como dos PNG cuadrados exactos de 192 y 512 px (data:image/png;base64, máx. 250 KB y 900 KB), hechos en el navegador. Sin logo nuevo se conserva el anterior. {reset:true} vuelve a Conversa. Para un cliente responde 404 (más adelante será opción de pago).
