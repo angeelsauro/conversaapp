@@ -95,6 +95,7 @@ export class History {
     // The chat list shows each chat's last message and its unread count without loading every message.
     if(!existing&&!seen&&msg.timestamp>=(chat.last?.timestamp||0))chat.last=preview(msg);
     if(!existing&&!seen&&source==='live')chat.unread=msg.fromMe?0:(chat.unread||0)+1;
+    if(!existing&&!seen&&source==='live'&&!msg.fromMe&&chat.archived)chat.archived=undefined;// a new message brings an archived chat back
     this.save(chat);
     if(!seen)this.store.put(this.w,'seen',raw.key.id,{first:msg.id});
     // Re-delivered history can fill in a message an older version could not read (stored as «other»).

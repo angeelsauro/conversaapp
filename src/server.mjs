@@ -403,7 +403,8 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    else if(path==='/api/chat/react'){if(typeof input.id!=='string'||input.id.length>300||!REACTIONS.has(input.emoji))throw new Error('Reacción no disponible.');return json(200,await b.react(input.id,input.emoji));}
    else if(path==='/api/chat/read'){if(!direct(input.jid))throw new Error('Chat inválido');const chat=c.history.chat(input.jid);if(chat.unread){chat.unread=0;c.history.save(chat);}}
    else if(path==='/api/chat/review'){if(typeof input.enabled!=='boolean')throw new Error('Selección inválida');c.history.review(input.jid,input.enabled);}
-   else if(path==='/api/chat/pin'){if(!direct(input.jid))throw new Error('Chat inválido');const chat=c.history.chat(input.jid);if(chat.deleted)return json(404,{error:'Chat borrado.'});chat.pinned=input.pinned===true?Date.now():undefined;c.history.save(chat);}
+   else if(path==='/api/chat/pin'){if(!direct(input.jid))throw new Error('Chat inválido');const chat=c.history.chat(input.jid);if(chat.deleted)return json(404,{error:'Chat borrado.'});chat.pinned=(input.pinned===true&&!chat.archived)?Date.now():undefined;c.history.save(chat);}
+   else if(path==='/api/chat/archive'){if(!direct(input.jid))throw new Error('Chat inválido');const chat=c.history.chat(input.jid);if(chat.deleted)return json(404,{error:'Chat borrado.'});chat.archived=input.archived===true?true:undefined;if(chat.archived)chat.pinned=undefined;c.history.save(chat);}
    else if(path==='/api/chat/unread'){if(!direct(input.jid))throw new Error('Chat inválido');const chat=c.history.chat(input.jid);if(chat.deleted||!chat.last)return json(404,{error:'Chat vacío.'});chat.unread=Math.max(1,chat.unread||0);c.history.save(chat);}
    else if(path==='/api/history/more'){
     if(!direct(input.jid))throw new Error('Chat inválido');
