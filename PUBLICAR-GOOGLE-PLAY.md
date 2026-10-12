@@ -38,23 +38,23 @@ Requisito para ambas opciones: el servidor actualizado y la app pública abriend
    - `https://app.mutuomatch.com/legal/terminos.html`
    - `https://app.mutuomatch.com/legal/eliminar-cuenta.html`
 
-## 1. Completar los datos pendientes
+## 1. Datos ya completados
 
-En los archivos hay textos entre corchetes que debes reemplazar. Abre cada archivo con el Bloc de notas, pulsa **Ctrl+H**, escribe el texto con corchetes y su valor, y pulsa **Reemplazar todo**. Al final, busca «[» (Ctrl+F) para comprobar que no queda ninguno.
+Las páginas legales y la ficha ya están rellenadas con los datos reales:
 
-| Texto | Qué poner | Archivos |
-|---|---|---|
-| `[RAZÓN SOCIAL]`, `[RUC]`, `[DIRECCIÓN]` | Datos legales de Andina Music | `public/legal/*.html` |
-| `[CORREO DE CONTACTO]` | Correo de soporte que revises a diario | `public/legal/*.html`, `play/*.md` |
-| `app.mutuomatch.com` | Dominio de la app, sin `https://` (ej.: `app.tudominio.com`) | todos |
-| `[FECHA]` | Fecha de publicación de las páginas (ej.: 15 de octubre de 2026) | `public/legal/*.html` |
-| `[N días]` | **Dos plazos distintos:** cuántos días duran las copias de seguridad, y en cuántos días borras una cuenta pedida por correo | `public/legal/*.html`, `play/data-safety-es.md` |
-| `[Hostinger]`, `[PAÍS DEL SERVIDOR]` | Proveedor del servidor (confirmar) y país donde está | `public/legal/privacidad.html`, `play/data-safety-es.md` |
-| `[NOMBRE Y CÓDIGO DE INSCRIPCIÓN DEL BANCO DE DATOS…]` | Inscripción ante la Autoridad de Protección de Datos Personales, si corresponde | `public/legal/privacidad.html` |
-| `[NÚMERO DEMO]`, `[CONTRASEÑA DEMO]` | Cuenta demo para revisores | `play/app-access-es.md` |
-| `[RUTA-AL-KEYSTORE]` | `C:/conversa-llaves` | `android/twa-manifest.json` |
+- **Responsable:** Andina Music L.L.C. — 30 N Gould St Ste N, Sheridan, WY 82801-6317, Estados Unidos.
+- **Correo de contacto:** cobol@andinamusic.com
+- **Dominio de la app:** app.mutuomatch.com
+- **Fecha de las páginas:** 12 de octubre de 2026
+- **Plazos:** 30 días para copias de seguridad y para el borrado de cuenta.
+- **Servidor:** Hostinger, en Estados Unidos.
+- **Cuenta demo:** 51900000000 / ConversaDemo2026
 
-Haz revisar las páginas legales por un abogado: las partes marcadas «confirmar con asesoría legal» lo necesitan.
+Pendiente, y conviene hacerlo antes de un lanzamiento público amplio:
+
+- **Confirmar el país del servidor:** se puso Estados Unidos. Si tu VPS de Hostinger está en otro país (lo ves en hPanel → VPS), cámbialo en `public/legal/privacidad.html` y `play/data-safety-es.md`.
+- **Revisión legal:** las partes marcadas «Pendiente: confirmar con asesoría legal» (ley aplicable y jurisdicción) las debe revisar un abogado, por ser una sociedad de EE. UU. que presta el servicio a usuarios en Perú.
+- **Keystore de subida:** la ruta `[RUTA-AL-KEYSTORE]` en `android/twa-manifest.json` solo importa si vuelves a compilar tú mismo; el `.aab` ya está firmado y listo para subir.
 
 ## 2. Crear el archivo de la app (.aab)
 
@@ -73,7 +73,7 @@ Sigue `android/README.md`, pasos 1 a 4. Al final tendrás `C:\conversa-android\a
    - icono: `public/icon-512.png`;
    - gráfico de funciones: `play/feature-graphic.png`;
    - capturas de teléfono: `play/screenshots/01…05` en ese orden.
-2. **Presencia en la tienda → Configuración de la tienda:** categoría **Empresa**, correo [CORREO DE CONTACTO] y sitio web `https://app.mutuomatch.com`.
+2. **Presencia en la tienda → Configuración de la tienda:** categoría **Empresa**, correo cobol@andinamusic.com y sitio web `https://app.mutuomatch.com`.
 3. Guarda.
 
 ## 5. Contenido de la app (Política y programas → Contenido de la app)

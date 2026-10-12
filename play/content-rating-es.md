@@ -6,7 +6,7 @@ La clasificación describe el **contenido** de la app (violencia, sexo, lenguaje
 
 ## 1. Datos iniciales
 
-- **Correo electrónico:** [CORREO DE CONTACTO] (IARC envía ahí los certificados).
+- **Correo electrónico:** cobol@andinamusic.com (IARC envía ahí los certificados).
 - **Categoría:** **Utilidad, productividad, comunicación u otra** (en inglés: *Utility, Productivity, Communication, or Other*).
   - No elijas «Juego», «Redes sociales», «Entretenimiento» ni «Noticias».
 - Acepta los términos de uso de IARC.

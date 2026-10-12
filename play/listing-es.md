@@ -75,7 +75,7 @@ Términos de uso: https://app.mutuomatch.com/legal/terminos.html
 
 ## Datos de contacto (misma pantalla: Configuración de la tienda)
 
-- **Correo electrónico:** [CORREO DE CONTACTO] (obligatorio y público)
+- **Correo electrónico:** cobol@andinamusic.com (obligatorio y público)
 - **Sitio web:** https://app.mutuomatch.com
 - **Teléfono:** opcional; si lo pones, será público.
 - **Política de privacidad:** https://app.mutuomatch.com/legal/privacidad.html

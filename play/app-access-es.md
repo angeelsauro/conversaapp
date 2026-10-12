@@ -31,7 +31,7 @@ Demo account with fictional data. It does NOT require linking a real WhatsApp nu
 
 About real accounts: a real user links their own WhatsApp number as a "linked device" by entering a pairing code in WhatsApp > Linked devices > Link with phone number. This is an unofficial connection (not the WhatsApp Business Platform); the app shows the risk and asks the user to accept it explicitly before linking. Conversa is not affiliated with WhatsApp or Meta.
 
-Contact: [CORREO DE CONTACTO]
+Contact: cobol@andinamusic.com
 ```
 
 ### Versión en español (referencia)
@@ -49,7 +49,7 @@ Cuenta demo con datos ficticios. NO requiere vincular un número de WhatsApp rea
 
 Sobre las cuentas reales: el usuario vincula su propio número de WhatsApp como «dispositivo vinculado» ingresando un código de vinculación en WhatsApp → Dispositivos vinculados → Vincular con el número de teléfono. Es una conexión no oficial (no es la plataforma oficial de WhatsApp Business); la app muestra el riesgo y pide aceptarlo de forma expresa antes de vincular. Conversa no está afiliada a WhatsApp ni a Meta.
 
-Contacto: [CORREO DE CONTACTO]
+Contacto: cobol@andinamusic.com
 ```
 
 ## Requisitos de la cuenta demo (para ingeniería)

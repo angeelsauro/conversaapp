@@ -39,7 +39,7 @@ Marca **solo** estos tipos. Todo lo que no aparece aquí queda **sin marcar**.
 Para **todos** los tipos marcados:
 
 - **¿Se recopilan?** Sí.
-- **¿Se comparten?** **No.** Los proveedores de infraestructura (alojamiento [Hostinger], Cloudflare y los servicios push de Google, Apple y Mozilla) procesan datos por cuenta de Andina Music. Google no considera eso «compartir». Los mensajes que el usuario envía a sus contactos son transferencias iniciadas por el usuario y tampoco cuentan como «compartir».
+- **¿Se comparten?** **No.** Los proveedores de infraestructura (alojamiento Hostinger, Cloudflare y los servicios push de Google, Apple y Mozilla) procesan datos por cuenta de Andina Music. Google no considera eso «compartir». Los mensajes que el usuario envía a sus contactos son transferencias iniciadas por el usuario y tampoco cuentan como «compartir».
 - **¿Se procesan de forma efímera?** **No.** (Se guardan cifrados, o en el caso de archivos completos, quedan un tiempo en la caché de memoria del servidor; por eso no se declaran como efímeros.)
 
 | Tipo de datos | ¿Obligatorio u opcional? | Propósitos (marcar solo estos) |
@@ -75,6 +75,6 @@ Revisa que coincidan con `public/legal/privacidad.html`:
 - sin venta de datos ni «compartir» con terceros;
 - cifrado en tránsito y en reposo;
 - eliminación de la cuenta en la app y en la URL pública;
-- copias de seguridad cifradas que se borran en [N días].
+- copias de seguridad cifradas que se borran en 30 días.
 
 Google compara el formulario con la política y con el comportamiento real de la app. Una diferencia es motivo frecuente de rechazo.
