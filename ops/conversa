@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# conversa — herramienta de administración del servidor de Conversa.
+# Convierte las operaciones habituales en comandos cortos, para no depender
+# de comandos largos de Docker. Instálala con:  conversa install
+set -euo pipefail
+
+DIR="${CONVERSA_DIR:-/opt/conversa}"
+BACKUP_KEEP="${CONVERSA_BACKUP_KEEP:-14}"
+
+die(){ echo "✗ $*" >&2; exit 1; }
+need_dir(){ [ -f "$DIR/deploy/compose.yaml" ] || die "No encuentro el proyecto en $DIR. Prueba:  CONVERSA_DIR=/ruta conversa $*"; cd "$DIR"; }
+compose_files(){ local f=(-f deploy/compose.yaml); [ -f deploy/compose.tunnel.yaml ] && f+=(-f deploy/compose.tunnel.yaml); printf '%s\n' "${f[@]}"; }
+dc(){ need_dir; mapfile -t _f < <(compose_files); docker compose --env-file deploy/.env "${_f[@]}" "$@"; }
+# Ejecuta un snippet de Node dentro del contenedor de la app (tiene la clave y el código).
+app_node(){ dc exec -T conversa node -e "$1"; }
+
+BOT_JS_SET='import("/app/src/store.mjs").then(({Store})=>{const s=new Store(process.env.CONVERSA_DATA_DIR);const want=TARGET;const ws=s.db.prepare("SELECT DISTINCT workspace FROM records").all().map(r=>r.workspace);let n=0;for(const w of ws){const b=s.get(w,"settings","bot");if(b&&!!b.enabled!==want){b.enabled=want;s.put(w,"settings","bot",b);n++;console.log((want?"  bot ACTIVADO en ":"  bot APAGADO en ")+w);}}console.log(n?("Listo: "+n+" espacio(s) cambiado(s).")  :"Nada que cambiar (ya estaba así).");}).catch(e=>{console.error("ERROR:",e.message);process.exit(1);})'
+BOT_JS_SHOW='import("/app/src/store.mjs").then(({Store})=>{const s=new Store(process.env.CONVERSA_DATA_DIR);const ws=s.db.prepare("SELECT DISTINCT workspace FROM records").all().map(r=>r.workspace);let any=false;for(const w of ws){const b=s.get(w,"settings","bot");if(b){any=true;console.log("  "+w+": bot "+(b.enabled?"ACTIVADO":"apagado")+(b.enabled&&b.savedReplies?(" ("+b.savedReplies.length+" respuesta(s))"):""));}}if(!any)console.log("  (ningún bot configurado)");}).catch(e=>{console.error("  (no pude leer el estado del bot)");})'
+
+cmd_status(){
+  need_dir
+  echo "== Contenedores =="; dc ps --format '  {{.Name}}  {{.Status}}' 2>/dev/null || dc ps
+  echo; echo "== App (salud interna) =="
+  if dc exec -T conversa node scripts/healthcheck.mjs >/dev/null 2>&1; then echo "  ✓ la app responde (sana)"; else echo "  ✗ la app NO responde"; fi
+  echo; echo "== Bot =="; app_node "$BOT_JS_SHOW" 2>/dev/null || echo "  (contenedor apagado)"
+  echo; echo "== Disco =="; df -h "$DIR" | awk 'NR==2{print "  usado "$3" de "$2" ("$5")"}'
+  local dom; dom=$(grep -E '^CONVERSA_DOMAIN=' deploy/.env 2>/dev/null | cut -d= -f2- || true)
+  echo; echo "== Panel =="
+  if [ -n "$dom" ]; then
+    local code; code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$dom" 2>/dev/null || echo 000)
+    case "$code" in
+      200|30*|40*) echo "  ✓ https://$dom responde (código $code) — el túnel funciona";;
+      53*|52*)     echo "  ✗ https://$dom da error de Cloudflare ($code). Prueba:  conversa restart-tunnel";;
+      000)         echo "  ✗ no hubo respuesta de https://$dom (red o túnel). Prueba:  conversa restart-tunnel";;
+      *)           echo "  ? https://$dom respondió $code";;
+    esac
+  else echo "  (no hay CONVERSA_DOMAIN en deploy/.env)"; fi
+}
+
+cmd_bot(){
+  case "${1:-}" in
+    off|apagar|0) echo "Apagando el bot…"; app_node "${BOT_JS_SET/TARGET/false}";;
+    on|activar|1) echo "Activando el bot…"; app_node "${BOT_JS_SET/TARGET/true}";;
+    ''|estado|status) app_node "$BOT_JS_SHOW";;
+    *) die "Uso: conversa bot [off|on]";;
+  esac
+}
+
+cmd_panel(){
+  need_dir
+  local dom; dom=$(grep -E '^CONVERSA_DOMAIN=' deploy/.env | cut -d= -f2-)
+  [ -n "$dom" ] || die "No hay CONVERSA_DOMAIN en deploy/.env"
+  echo "Tu panel de admin:"; echo "  https://$dom"
+  echo; echo "Para entrar necesitas tu correo (Cloudflare) y tu código/PIN."
+  echo "Ver el código maestro:  conversa code"
+}
+
+cmd_code(){
+  need_dir
+  local dom tok; dom=$(grep -E '^CONVERSA_DOMAIN=' deploy/.env | cut -d= -f2-)
+  tok=$(cat deploy/secrets/owner-token 2>/dev/null | tr -d '[:space:]') || die "No encuentro deploy/secrets/owner-token"
+  echo "⚠ SECRETO — no lo compartas ni lo pegues en chats ni capturas."
+  echo
+  echo "Enlace de acceso directo al panel (cópialo entero en tu navegador):"
+  echo "  https://$dom/#access=$tok"
+  echo
+  echo "Entra una vez con este enlace y, en Ajustes, pon un PIN fácil de recordar."
+}
+
+cmd_restart(){ echo "Reiniciando la app…"; dc up -d --force-recreate conversa; echo "✓ hecho"; cmd_status; }
+cmd_restart_tunnel(){ echo "Reiniciando el túnel de Cloudflare…"; dc restart tunnel 2>/dev/null || dc up -d --force-recreate tunnel; echo "✓ hecho. Espera 30 s y recarga el panel."; }
+cmd_logs(){ need_dir; dc logs --tail "${1:-80}" conversa; }
+
+cmd_backup(){
+  need_dir
+  local out="/data/backups/conversa-$(date +%Y%m%d-%H%M%S).cvb"
+  echo "Creando copia de seguridad cifrada…"
+  dc exec -T conversa sh -c "mkdir -p /data/backups && node scripts/backup.mjs backup '$out'"
+  # Conserva solo las últimas N copias.
+  dc exec -T conversa sh -c "ls -1t /data/backups/*.cvb 2>/dev/null | tail -n +$((BACKUP_KEEP+1)) | xargs -r rm -f"
+  echo "✓ copia guardada dentro del servidor (en el volumen de datos: deploy/data/backups/)."
+  echo "  Se conservan las últimas $BACKUP_KEEP. Recuerda: la copia está cifrada con tu clave."
+}
+
+cmd_install(){
+  local self; self="$(readlink -f "$0")"
+  cp "$self" /usr/local/bin/conversa && chmod +x /usr/local/bin/conversa
+  echo "✓ instalado: ahora puedes escribir  conversa  desde cualquier carpeta."
+  # Copia diaria automática a las 3:00 (si hay cron).
+  if command -v crontab >/dev/null 2>&1; then
+    ( crontab -l 2>/dev/null | grep -v 'conversa backup' ; echo "0 3 * * * CONVERSA_DIR=$DIR /usr/local/bin/conversa backup >>/var/log/conversa-backup.log 2>&1" ) | crontab -
+    echo "✓ copia de seguridad automática programada cada día a las 3:00."
+  else
+    echo "  (no hay 'cron' aquí; la copia automática no se programó)"
+  fi
+}
+
+cmd_help(){ cat <<'H'
+conversa — administración fácil de tu servidor
+
+  conversa status           Ver el estado (contenedores, app, bot, disco, panel)
+  conversa bot off          Apagar el bot (deja de responder solo)
+  conversa bot on           Volver a activar el bot
+  conversa panel            Mostrar la dirección de tu panel de admin
+  conversa code             Mostrar tu enlace de acceso con el código maestro (SECRETO)
+  conversa restart          Reiniciar la app (si se queda rara)
+  conversa restart-tunnel   Reiniciar el túnel de Cloudflare (si el panel da Error 1033)
+  conversa backup           Hacer una copia de seguridad cifrada ahora
+  conversa logs [n]         Ver los últimos registros de la app
+  conversa install          Instalar este comando y la copia diaria automática
+
+Si el proyecto no está en /opt/conversa:  CONVERSA_DIR=/ruta conversa <comando>
+H
+}
+
+case "${1:-help}" in
+  status|estado) cmd_status;;
+  bot)           shift; cmd_bot "${1:-}";;
+  panel)         cmd_panel;;
+  code|codigo)   cmd_code;;
+  restart|reiniciar) cmd_restart;;
+  restart-tunnel|tunnel) cmd_restart_tunnel;;
+  backup|copia)  cmd_backup;;
+  logs|registros) shift; cmd_logs "${1:-80}";;
+  install|instalar) cmd_install;;
+  help|-h|--help|ayuda) cmd_help;;
+  *) echo "Comando desconocido: $1"; echo; cmd_help; exit 1;;
+esac
