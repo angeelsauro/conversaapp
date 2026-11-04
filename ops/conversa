@@ -82,6 +82,32 @@ cmd_backup(){
   echo "  Se conservan las últimas $BACKUP_KEEP. Recuerda: la copia está cifrada con tu clave."
 }
 
+cmd_update(){
+  need_dir
+  local branch="${CONVERSA_BRANCH:-claude/conversa-review-publish-131w94}"
+  local url="https://github.com/angeelsauro/conversaapp/archive/refs/heads/$branch.tar.gz"
+  local tmp; tmp="$(mktemp -d)"
+  echo "Descargando la última versión del código…"
+  curl -fsSL "$url" -o "$tmp/c.tgz" || { rm -rf "$tmp"; die "No se pudo descargar (revisa la conexión)."; }
+  mkdir -p "$tmp/x"
+  tar xzf "$tmp/c.tgz" -C "$tmp/x" --strip-components=1 || { rm -rf "$tmp"; die "No se pudo extraer el código."; }
+  [ -f "$tmp/x/src/server.mjs" ] || { rm -rf "$tmp"; die "El código descargado no es válido; no se cambió nada."; }
+  echo "Respaldo del código actual…"
+  tar czf "$DIR/conversa-code-backup-$(date +%Y%m%d-%H%M).tgz" -C "$DIR" src public scripts deploy/compose.yaml 2>/dev/null || true
+  echo "Aplicando el código nuevo (NO toca tus datos, .env ni secretos)…"
+  rm -rf "$DIR/src" "$DIR/public" "$DIR/scripts"
+  cp -rf "$tmp/x/src" "$tmp/x/public" "$tmp/x/scripts" "$DIR/"
+  cp -f "$tmp/x/package.json" "$tmp/x/package-lock.json" "$tmp/x/Dockerfile" "$DIR/"
+  cp -f "$tmp/x/deploy/compose.yaml" "$DIR/deploy/"
+  if [ -f "$tmp/x/deploy/compose.tunnel.yaml" ]; then cp -f "$tmp/x/deploy/compose.tunnel.yaml" "$DIR/deploy/"; fi
+  rm -rf "$tmp"
+  echo "Reconstruyendo y reiniciando (puede tardar 2-5 min)…"
+  dc build
+  dc up -d
+  echo "✓ actualizado a la última versión"
+  cmd_status
+}
+
 cmd_install(){
   local self; self="$(readlink -f "$0")"
   if [ "$self" != "/usr/local/bin/conversa" ]; then
@@ -109,6 +135,7 @@ conversa — administración fácil de tu servidor
   conversa code             Mostrar tu enlace de acceso con el código maestro (SECRETO)
   conversa restart          Reiniciar la app (si se queda rara)
   conversa restart-tunnel   Reiniciar el túnel de Cloudflare (si el panel da Error 1033)
+  conversa update           Traer la última versión de Conversa y reiniciar
   conversa backup           Hacer una copia de seguridad cifrada ahora
   conversa logs [n]         Ver los últimos registros de la app
   conversa install          Instalar este comando y la copia diaria automática
@@ -124,6 +151,7 @@ case "${1:-help}" in
   code|codigo)   cmd_code;;
   restart|reiniciar) cmd_restart;;
   restart-tunnel|tunnel) cmd_restart_tunnel;;
+  update|actualizar) cmd_update;;
   backup|copia)  cmd_backup;;
   logs|registros) shift; cmd_logs "${1:-80}";;
   install|instalar) cmd_install;;

@@ -21,12 +21,22 @@ export class Bot {
  }
  chooseReply(text){const c=this.config(),rules=c.savedReplies.filter(r=>r.keywords?.length);if(!rules.length)return c.keywordOnly?'':c.fallback;const norm=s=>' '+s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es').replace(/[^\p{L}\p{N}]+/gu,' ').trim()+' ';const message=norm(text);const found=rules.filter(r=>r.keywords.some(k=>norm(k).trim()&&message.includes(norm(k))));return found.length===1?found[0].text:'';}
  async preview(text){if(typeof text!=='string'||!text.trim()||text.length>4000)throw new Error('Escribe una pregunta de hasta 4000 caracteres.');const config=this.config();return config.mode==='ai'&&this.respond?await this.respond(config,text):this.chooseReply(text);}
+ // Reemplaza variables en una respuesta guardada justo antes de enviarla:
+ //  {nombre} → primer nombre del contacto (vacío si no se conoce), {saludo} → saludo por la hora.
+ // Solo toca el texto si contiene alguna variable, así las respuestas normales quedan idénticas.
+ personalize(text,chat){
+  if(typeof text!=='string'||!/\{(nombre|saludo)\}/i.test(text))return text;
+  const raw=(chat?.name&&chat.name!=='Contacto')?String(chat.name).trim():'';
+  const nombre=raw.split(/\s+/)[0]||'';
+  let saludo='Hola';try{const h=Number(new Intl.DateTimeFormat('en-US',{hour:'numeric',hour12:false,timeZone:this.config().tz||'America/Lima'}).format(new Date()));if(Number.isFinite(h))saludo=h<12?'Buenos días':h<20?'Buenas tardes':'Buenas noches';}catch{}
+  return text.replace(/\{nombre\}/gi,nombre).replace(/\{saludo\}/gi,saludo).replace(/ {2,}/g,' ').replace(/ +([!?.,:;])/g,'$1').trim();
+ }
  async sendStandardOnce({jid,incomingId}){
   const chat=this.c.history.chat(jid),msg=this.store.get(this.w,'messages',incomingId);
   if(!msg||msg.fromMe||msg.source!=='live'||this.c.history.canonical(msg.jid)!==chat.jid||Date.now()-msg.timestamp>86400000||chat.deleted||chat.optOut)throw new Error('La prueba necesita un mensaje entrante reciente de ese contacto.');
   const key='manual-standard:'+incomingId,prior=this.store.get(this.w,'queue',key);if(prior)return {state:prior.state,duplicate:true};
   if(this.c.status!=='connected'||!this.c.socket)throw new Error('Conecta WhatsApp primero.');
-  const text=this.config().fallback;if(!text)throw new Error('Configura la respuesta estándar.');
+  const text=this.personalize(this.config().fallback,chat);if(!text)throw new Error('Configura la respuesta estándar.');
   const id=randomBytes(16).toString('hex').toUpperCase(),timestamp=Date.now();
   const job={id:key,jid:chat.jid,state:'sending',timestamp,outgoingId:id,manual:true};
   this.store.transaction(()=>{this.store.put(this.w,'queue',key,job);const record={id:chat.jid+':'+id,key:{remoteJid:chat.jid,id,fromMe:true},jid:chat.jid,name:'Conversa',text,kind:'text',timestamp,fromMe:true,bot:true,status:'sending'};chat.enabled=false;chat.handoffAt=timestamp;chat.handoffReason='greeting';chat.last=preview(record);chat.latest=Math.max(chat.latest||0,timestamp);this.c.history.save(chat);this.store.put(this.w,'messages',record.id,record);});
@@ -77,7 +87,7 @@ export class Bot {
    let text;try{text=job.testId?this.store.get(this.w,'settings','keyword-test').text:await this.preview(msg.text);}catch{if(this.stopped)return;job.state=job.attempts>=3?'failed':'pending';job.nextAt=Date.now()+60000*job.attempts;save();return;}
    if(this.stopped)return;
    if(!text||!this.allowed(job)||this.c.epoch!==epoch){job.state='skipped';save();if(!text){const chat=this.c.history.chat(job.jid);chat.enabled=false;chat.handoffAt=Date.now();chat.handoffReason='keyword-review';this.c.history.save(chat);}return;}
-   text=text.slice(0,4000);const id=randomBytes(16).toString('hex').toUpperCase();
+   text=this.personalize(text,this.c.history.chat(job.jid)).slice(0,4000);const id=randomBytes(16).toString('hex').toUpperCase();
    job.state='sending';job.outgoingId=id;job.sentAt=Date.now();
    // Persist intent before the network call. An uncertain send is never retried automatically.
    this.store.transaction(()=>{save();budget.count++;this.store.put(this.w,'settings','budget',budget);if(job.testId){const t=this.store.get(this.w,'settings','keyword-test');t.consumedAt=Date.now();this.store.put(this.w,'settings','keyword-test',t);}const record={id:`${job.jid}:${id}`,key:{remoteJid:job.jid,id,fromMe:true},jid:job.jid,name:'Conversa',text,kind:'text',timestamp:Date.now(),fromMe:true,bot:true,status:'sending'},chat=this.c.history.chat(job.jid);if(job.testId||this.config().handoffAfterReply){chat.enabled=false;chat.handoffAt=Date.now();chat.handoffReason='greeting';}chat.last=preview(record);chat.latest=Math.max(chat.latest||0,record.timestamp);this.c.history.save(chat);this.store.put(this.w,'messages',record.id,record);});

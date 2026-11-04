@@ -28,6 +28,7 @@ Eso crea el comando `conversa` y programa una **copia de seguridad automática d
 | Volver a activar el bot | `conversa bot on` |
 | Ver la dirección de mi panel | `conversa panel` |
 | Entrar al panel (enlace con mi código) | `conversa code` |
+| **Traer mejoras nuevas** (actualizar) | `conversa update` |
 | Reiniciar la app si se pone rara | `conversa restart` |
 | **Arreglar el panel si da Error 1033** | `conversa restart-tunnel` |
 | Hacer una copia de seguridad ahora | `conversa backup` |
