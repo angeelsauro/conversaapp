@@ -659,3 +659,11 @@ body[data-page=inbox] main>header{justify-content:flex-end;margin-bottom:14px}
 .subscribe-card .toolbar.centered{margin-top:14px;gap:16px;flex-wrap:wrap}
 .subscribe-card .welcome-legal{color:var(--muted);margin-top:16px}
 .subscribe-card .welcome-legal a{color:inherit}
+.profile-labels{display:flex;flex-wrap:wrap;gap:6px}
+.label-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;font-size:12.5px;border:1px solid #D9E4DF;border-radius:18px;background:#fff;color:#1D3534;min-height:36px}
+.label-chip:hover{background:#F2F7F4}
+.label-chip.selected{border-color:#176B59;background:#E8F4EE;font-weight:600}
+.label-dot{width:11px;height:11px;border-radius:50%;flex:none}
+.row-label-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.profile-note{width:100%;border:1px solid #C7D8D1;border-radius:10px;padding:10px;font:inherit;font-size:14px;resize:vertical;min-height:62px;background:#fff;color:#1D3534}
+.profile-note:focus-visible{outline-color:#258C78}

@@ -4,6 +4,8 @@ const labels={disconnected:'Sin conexión',connecting:'Conectando',qr:'Escanea e
 // 'app': public app for client accounts (welcome, sign-up, pairing); 'panel': the owner's private panel.
 let appMode=false;
 const titles={connection:'Ajustes',inbox:'Chats',bot:'Mi bot'};
+const CHAT_LABELS=[{id:'nuevo',name:'Nuevo',color:'#2b7fff'},{id:'agendado',name:'Cita agendada',color:'#18a957'},{id:'pendiente',name:'Pendiente',color:'#e0a106'},{id:'atendido',name:'Atendido',color:'#7a8a99'}];
+const labelById=id=>CHAT_LABELS.find(l=>l.id===id);
 const date=t=>new Intl.DateTimeFormat('es',{dateStyle:'short',timeStyle:'short'}).format(new Date(t));
 function page(name){for(const section of document.querySelectorAll('.page'))section.hidden=section.id!==name;for(const button of document.querySelectorAll('.nav')){button.classList.toggle('active',button.dataset.page===name);if(button.dataset.page===name)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}$('page-title').textContent=titles[name];document.body.dataset.page=name;if(name==='connection')updatePushCard();syncChatFocus();window.scrollTo({top:0,behavior:'instant'});}
 document.addEventListener('click',e=>{const button=e.target.closest('[data-page]');if(button)page(button.dataset.page);});
@@ -189,7 +191,7 @@ $('profile-open').onclick=()=>openProfile();
 // Contact profile: large photo, number, WhatsApp «info», shared files and the bot options for this chat.
 let profileFor=null;
 async function openProfile(){const chat=inboxChats.find(c=>c.jid===selectedChat);if(!chat)return;closeReactMenu();profileFor=chat.jid;const panel=$('profile');panel.hidden=false;$('chat-options').setAttribute('aria-expanded','true');
- fillAvatar($('profile-avatar'),chat);$('profile-name').textContent=displayName(chat);const number=/@s\.whatsapp\.net$/.test(chat.jid)?chat.jid.split('@')[0]:null;
+ fillAvatar($('profile-avatar'),chat);$('profile-name').textContent=displayName(chat);renderProfileExtras(chat);const number=/@s\.whatsapp\.net$/.test(chat.jid)?chat.jid.split('@')[0]:null;
  $('profile-number').textContent=number?'+'+number:'Número oculto por WhatsApp';$('profile-whatsapp').hidden=$('profile-copy').hidden=!number;if(number)$('profile-whatsapp').href='https://wa.me/'+number;
  $('profile-about').textContent='Cargando…';$('profile-files').textContent='';$('profile-media').replaceChildren();$('profile-docs').replaceChildren();$('profile-close').focus();
  if(!LIVE){$('profile-about').textContent='Vista previa: la info del contacto llega de WhatsApp.';}
@@ -199,6 +201,18 @@ async function openProfile(){const chat=inboxChats.find(c=>c.jid===selectedChat)
   for(const m of photos.slice(0,60)){const b=el('button','profile-thumb'+(m.kind==='video'?' is-video':''));b.type='button';b.setAttribute('aria-label',(m.kind==='video'?'Video':'Foto')+' del '+listTime(m.timestamp));if(m.media?.thumb){const img=new Image();img.alt='';img.src='data:image/jpeg;base64,'+m.media.thumb;b.append(img);}else b.append(icon(m.kind));if(m.kind==='video')b.append(el('span','thumb-play','▶'));b.onclick=()=>openLightbox(m);$('profile-media').append(b);}
   for(const m of docs.slice(0,30)){const row=m.media?.available?el('a','profile-doc'):el('span','profile-doc');if(m.media?.available){row.href=mediaUrl(m.id);row.download=m.media?.name||'';}row.append(icon('document'));const t=el('span','');t.append(el('strong','',m.media?.name||'Documento'),el('small','',[fileSize(m.media?.size),listTime(m.timestamp),m.media?.available?'':'Ábrelo en WhatsApp'].filter(Boolean).join(' · ')));row.append(t);$('profile-docs').append(row);}
  }catch{if(profileFor===chat.jid)$('profile-about').textContent='No se pudo cargar la info.';}}
+function renderProfileExtras(chat){
+ const box=$('profile-labels');box.replaceChildren();
+ for(const l of [{id:'',name:'Sin etiqueta',color:''},...CHAT_LABELS]){
+  const b=el('button','label-chip'+((chat.label||'')===l.id?' selected':''));b.type='button';
+  if(l.color){const d=el('span','label-dot');d.style.background=l.color;b.append(d);}
+  b.append(el('span','',l.name));
+  b.onclick=async()=>{await action('chat/label',{jid:chat.jid,label:l.id});const fresh=inboxChats.find(c=>c.jid===chat.jid);if(fresh&&profileFor===fresh.jid)renderProfileExtras(fresh);};
+  box.append(b);
+ }
+ $('profile-note').value=chat.note||'';$('profile-note-status').textContent='';
+}
+$('profile-note-save').onclick=async()=>{const chat=inboxChats.find(c=>c.jid===profileFor);if(!chat)return;$('profile-note-status').textContent='Guardando…';try{await api('chat/note',{jid:chat.jid,note:$('profile-note').value});$('profile-note-status').textContent='Guardada ✓';refresh();}catch(e){$('profile-note-status').textContent=e.message||'No se pudo guardar.';}};
 function closeProfile(focus=true){if($('profile').hidden)return;$('profile').hidden=true;profileFor=null;$('chat-options').setAttribute('aria-expanded','false');if(focus)$('chat-options').focus();}
 $('profile-close').onclick=()=>closeProfile();
 $('profile-copy').onclick=()=>copyText($('profile-number').textContent,'Número copiado.');
@@ -258,7 +272,7 @@ function drawChatList(){const list=$('chat-list'),term=$('chat-search').value.tr
  const signature=JSON.stringify([chats.map(c=>[c.jid,c.name,c.last,c.unread,c.handoffAt,c.enabled,c.classification,c.optOut,c.photo,c.pinned,c.archived]),selectedChat,chatFilter,term,state.bot.enabled]);if(list.dataset.signature===signature)return;list.dataset.signature=signature;list.replaceChildren();
  if(!chats.length){const empty=el('div','list-empty');empty.append(el('strong','',term?'No encontramos ese chat':chatFilter==='unread'?'Estás al día':'No hay chats aquí'),el('p','',term?'Prueba con otro nombre, número o palabra.':'Las conversaciones aparecerán cuando WhatsApp las entregue.'));list.append(empty);return;}
  for(const c of chats){const last=c.last,status=chatStatus(c),unreadCount=c.unread||0,row=el('button','chat-row'+(selectedChat===c.jid?' current':'')+(unreadCount?' has-unread':'')+(c.pinned?' is-pinned':''));row.setAttribute('aria-label','Abrir chat de '+displayName(c)+(unreadCount?', '+unreadCount+' sin leer':''));row.setAttribute('aria-pressed',String(selectedChat===c.jid));
-  const avatar=fillAvatar(el('span'),c),content=el('span','chat-row-content'),top=el('span','chat-row-top');top.append(el('strong','',displayName(c)));if(c.pinned)top.append(icon('pin','pin-mark'));top.append(el('time','',lastTime(c)?listTime(lastTime(c)):''));
+  const avatar=fillAvatar(el('span'),c),content=el('span','chat-row-content'),top=el('span','chat-row-top');top.append(el('strong','',displayName(c)));if(c.pinned)top.append(icon('pin','pin-mark'));if(c.label){const _l=labelById(c.label);if(_l){const _d=el('span','row-label-dot');_d.style.background=_l.color;_d.title=_l.name;top.append(_d);}}top.append(el('time','',lastTime(c)?listTime(lastTime(c)):''));
   const preview=el('span','chat-preview');if(last){if(last.bot)preview.append(el('span','preview-who bot-who','Bot: '));else if(last.fromMe)preview.append(el('span','preview-who','Tú: '));if(MEDIA_KINDS.includes(last.kind)||CARD_KINDS.includes(last.kind)||['view_once','deleted'].includes(last.kind))preview.append(icon(last.kind,'preview-icon'),' ');preview.append(document.createTextNode(last.kind==='deleted'?mediaLabel('deleted'):last.text||mediaLabel(last.kind)));if(last.kind==='deleted')preview.classList.add('is-deleted');}else preview.textContent='Sin mensajes todavía';
   const bottom=el('span','chat-row-bottom');bottom.append(preview);if(['review','bot'].includes(status.tone))bottom.append(el('span','chat-tag '+status.tone,status.tone==='review'?'Revisión':'Bot'));if(unreadCount)bottom.append(el('span','unread-count',unreadCount>99?'99+':String(unreadCount)));
   content.append(top,bottom);row.append(avatar,content);row.onclick=()=>openChat(c.jid);list.append(row);}

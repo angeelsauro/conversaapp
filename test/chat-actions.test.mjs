@@ -52,3 +52,23 @@ test('HTTP: archive a chat, hide it from the list, and a new message brings it b
  h.ingest({key:{remoteJid:a,id:'m3',fromMe:true},messageTimestamp:Math.floor((tm+6000)/1000),message:{conversation:'ok'}},'live');
  assert.equal(app.store.get('owner','chats',a).archived,true,'my own message keeps it archived');
 });
+
+test('HTTP: set/clear a private note and a colored label on a chat',async t=>{
+ const dir=mkdtempSync(join(tmpdir(),'conversa-nl-')),port=49932;
+ const app=createApp({dir,port,connectorFactory:store=>({history:new History(store),status:'connected',snapshot:()=>({status:'connected'}),pause(){}})});
+ await new Promise(r=>app.server.listen(port,'127.0.0.1',r));t.after(async()=>{app.close();await new Promise(r=>app.server.close(r));rmSync(dir,{recursive:true,force:true});});
+ const base=`http://127.0.0.1:${port}`,cookie=(await fetch(base+'/api/login',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({token:readFileSync(join(dir,'owner-token'),'utf8')})})).headers.get('set-cookie').split(';')[0];
+ const post=(p,b)=>fetch(base+p,{method:'POST',headers:{Origin:base,'Content-Type':'application/json',Cookie:cookie},body:JSON.stringify(b)});
+ const h=app.connector.history,tm=h.establish('1').firstLinkedAt+1000,a='51988000002@s.whatsapp.net';
+ h.ingest(raw(a,'m1','hola',tm),'live');
+ // Nota: se recorta y se puede borrar.
+ assert.equal((await post('/api/chat/note',{jid:a,note:'  Cita el viernes 3pm  '})).status,200);
+ assert.equal(app.store.get('owner','chats',a).note,'Cita el viernes 3pm');
+ await post('/api/chat/note',{jid:a,note:''});
+ assert.equal(app.store.get('owner','chats',a).note,undefined);
+ // Etiqueta: una válida se guarda; una desconocida deja el chat sin etiqueta.
+ await post('/api/chat/label',{jid:a,label:'agendado'});
+ assert.equal(app.store.get('owner','chats',a).label,'agendado');
+ await post('/api/chat/label',{jid:a,label:'inventada'});
+ assert.equal(app.store.get('owner','chats',a).label,undefined);
+});
