@@ -180,7 +180,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    if(req.method==='GET'){
     if(!ctx)return json(401,{error:'Entra con tu acceso privado.'});
     // Routes that read a workspace's whole message store: generous for a person, a wall for a script.
-    if(['/api/chat/messages','/api/chat/media','/api/contact'].includes(path)&&limited('heavy|'+w,240,60000))return json(429,{error:'Demasiadas solicitudes. Espera un momento.'});
+    if(['/api/chat/messages','/api/chat/media','/api/contact','/api/metrics'].includes(path)&&limited('heavy|'+w,240,60000))return json(429,{error:'Demasiadas solicitudes. Espera un momento.'});
     if(path==='/api/export'&&limited('export|'+w,5,600000))return json(429,{error:'Exportaste hace poco. Inténtalo en unos minutos.'});
     // Subscription wall: a client without an active subscription can only see its state and the subscribe screen.
     if(ctx.role==='client'&&!subActive(ctx.account)&&!['/api/state','/api/subscription'].includes(path))return json(402,{error:'Necesitas una suscripción activa.',subscribe:true});
@@ -191,6 +191,13 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
       brand:(b=>b?{name:b.name,icon:!!b.icon192,updatedAt:b.updatedAt}:null)(brandAllowed(ctx)?store.get(w,'settings','brand'):null),brandEditable:brandAllowed(ctx),ownerPin:ctx.role==='owner'?!!store.get('owner','settings','pin'):undefined,
       notifications:{devices:store.count(w,'push'),preview:store.get(w,'settings','push')?.preview!==false},tests:ctx.role==='owner'&&testEndpoints,keywordTest:ctx.role==='owner'?(t=>t&&{jid:t.jid,expiresAt:t.expiresAt,consumedAt:t.consumedAt||null})(store.get(w,'settings','keyword-test')):null});}
     if(path==='/api/messages'){const offset=Math.max(0,Math.min(10000000,Number(url.searchParams.get('offset'))||0));return json(200,{messages:store.list(w,'messages',100,offset).map(m=>({...lite(m),conversationJid:c.history.canonical(m.jid)})),total:store.count(w,'messages')});}
+    if(path==='/api/metrics'){const now=Date.now(),day=86400000,weekAgo=now-7*day;
+     const chats=store.list(w,'chats',-1).filter(x=>!x.deleted),msgs=store.list(w,'messages',-1);
+     const keyFmt=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Lima'}),dayFmt=new Intl.DateTimeFormat('es-PE',{weekday:'short',timeZone:'America/Lima'});
+     const days=new Map();for(let i=6;i>=0;i--){const d=new Date(now-i*day);days.set(keyFmt.format(d),{label:dayFmt.format(d).replace('.',''),in:0,out:0});}
+     for(const m of msgs){if(m.timestamp<weekAgo)continue;const bucket=days.get(keyFmt.format(new Date(m.timestamp)));if(bucket){if(m.fromMe)bucket.out++;else bucket.in++;}}
+     const porDia=[...days.values()],recibidos7=porDia.reduce((s,d)=>s+d.in,0),enviados7=porDia.reduce((s,d)=>s+d.out,0);
+     return json(200,{chats:chats.length,nuevos7:chats.filter(x=>x.earliest>=weekAgo).length,activos7:chats.filter(x=>x.last?.timestamp>=weekAgo).length,sinLeer:chats.reduce((s,x)=>s+(x.unread||0),0),recibidos7,enviados7,porDia});}
     if(path==='/api/chat/messages'){
      // One chat's history, newest page first; `before` pages back in time.
      const jid=url.searchParams.get('jid');if(!direct(jid))return json(400,{error:'Chat inválido.'});

@@ -667,3 +667,18 @@ body[data-page=inbox] main>header{justify-content:flex-end;margin-bottom:14px}
 .row-label-dot{width:8px;height:8px;border-radius:50%;flex:none}
 .profile-note{width:100%;border:1px solid #C7D8D1;border-radius:10px;padding:10px;font:inherit;font-size:14px;resize:vertical;min-height:62px;background:#fff;color:#1D3534}
 .profile-note:focus-visible{outline-color:#258C78}
+.metrics-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:4px}
+.metric-tile{background:#F2F7F4;border:1px solid #E1ECE6;border-radius:12px;padding:12px 8px;text-align:center}
+.metric-tile strong{display:block;font-size:22px;color:#174C40;letter-spacing:-.5px}
+.metric-tile span{display:block;font-size:11px;color:#617672;margin-top:3px;line-height:1.3}
+.metrics-chart{display:flex;gap:7px;align-items:flex-end;margin-top:16px;height:88px}
+.metric-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%}
+.metric-bars{flex:1;width:100%;display:flex;gap:3px;align-items:flex-end;justify-content:center}
+.metric-bar{width:9px;border-radius:3px 3px 0 0;min-height:2px}
+.bar-in{background:#2C816D}
+.bar-out{background:#9AD6C4}
+.metric-day{font-size:10px;color:#75867E;text-transform:capitalize}
+.metrics-legend{display:flex;align-items:center;gap:6px;font-size:11px;color:#617672;margin-top:10px}
+.metrics-legend .leg{width:10px;height:10px;border-radius:3px}
+.metrics-legend .leg-in{background:#2C816D}
+.metrics-legend .leg-out{background:#9AD6C4;margin-left:10px}

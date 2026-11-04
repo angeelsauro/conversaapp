@@ -7,7 +7,7 @@ const titles={connection:'Ajustes',inbox:'Chats',bot:'Mi bot'};
 const CHAT_LABELS=[{id:'nuevo',name:'Nuevo',color:'#2b7fff'},{id:'agendado',name:'Cita agendada',color:'#18a957'},{id:'pendiente',name:'Pendiente',color:'#e0a106'},{id:'atendido',name:'Atendido',color:'#7a8a99'}];
 const labelById=id=>CHAT_LABELS.find(l=>l.id===id);
 const date=t=>new Intl.DateTimeFormat('es',{dateStyle:'short',timeStyle:'short'}).format(new Date(t));
-function page(name){for(const section of document.querySelectorAll('.page'))section.hidden=section.id!==name;for(const button of document.querySelectorAll('.nav')){button.classList.toggle('active',button.dataset.page===name);if(button.dataset.page===name)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}$('page-title').textContent=titles[name];document.body.dataset.page=name;if(name==='connection')updatePushCard();syncChatFocus();window.scrollTo({top:0,behavior:'instant'});}
+function page(name){for(const section of document.querySelectorAll('.page'))section.hidden=section.id!==name;for(const button of document.querySelectorAll('.nav')){button.classList.toggle('active',button.dataset.page===name);if(button.dataset.page===name)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}$('page-title').textContent=titles[name];document.body.dataset.page=name;if(name==='connection'){updatePushCard();loadMetrics();}syncChatFocus();window.scrollTo({top:0,behavior:'instant'});}
 document.addEventListener('click',e=>{const button=e.target.closest('[data-page]');if(button)page(button.dataset.page);});
 async function api(path,input={},{keepalive=false}={}){const res=await fetch('/api/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),keepalive,signal:AbortSignal.timeout(35000)});const data=await res.json().catch(()=>({}));if(res.status===402&&data.subscribe){Promise.resolve().then(refresh);throw new Error(data.error||'Necesitas una suscripción activa.');}if(!res.ok)throw new Error(data.error||'No se pudo completar la acción ('+res.status+').');return data;}
 function ask(text,ok='Confirmar',danger=false){return new Promise(resolve=>{const d=$('confirm-generic');$('confirm-text').textContent=text;$('confirm-ok').textContent=ok;$('confirm-ok').className=danger?'danger':'primary';d.onclose=()=>resolve(d.returnValue==='ok');d.returnValue='';d.showModal();});}
@@ -118,6 +118,21 @@ $('delete-form').onsubmit=async e=>{e.preventDefault();try{await api('account/de
 // One refresh at a time; a change announced meanwhile triggers exactly one more.
 let refreshing=null,refreshAgain=false,lastRefreshAt=0,events=null,eventsOpen=false,changeTimer=null;
 async function refresh(){if(refreshing){refreshAgain=true;return refreshing;}refreshing=(async()=>{try{do{refreshAgain=false;await loadState();}while(refreshAgain);}finally{refreshing=null;}})();return refreshing;}
+let metricsAt=0;
+async function loadMetrics(){
+ if(!online||Date.now()-metricsAt<15000)return;metricsAt=Date.now();
+ try{const r=await fetch('/api/metrics',{signal:AbortSignal.timeout(8000)});if(!r.ok)return;const m=await r.json();
+  $('metrics-card').hidden=false;
+  const grid=$('metrics-grid');grid.replaceChildren();
+  for(const [label,val] of [['Contactos',m.chats],['Nuevos',m.nuevos7],['Activos',m.activos7],['Recibidos',m.recibidos7],['Enviados',m.enviados7],['Sin leer',m.sinLeer]]){
+   const t=el('div','metric-tile');t.append(el('strong','',String(val??0)),el('span','',label));grid.append(t);}
+  const chart=$('metrics-chart');chart.replaceChildren();const dias=m.porDia||[],max=Math.max(1,...dias.map(d=>(d.in||0)+(d.out||0)));
+  for(const d of dias){const col=el('div','metric-col'),bars=el('div','metric-bars');
+   const bin=el('span','metric-bar bar-in');bin.style.height=((d.in||0)/max*100)+'%';bin.title=(d.in||0)+' recibidos';
+   const bout=el('span','metric-bar bar-out');bout.style.height=((d.out||0)/max*100)+'%';bout.title=(d.out||0)+' enviados';
+   bars.append(bin,bout);col.append(bars,el('span','metric-day',d.label||''));chart.append(col);}
+ }catch{}
+}
 async function loadState(){try{const res=await fetch('/api/state',{signal:AbortSignal.timeout(8000)});lastRefreshAt=Date.now();if(res.status===401){online=false;stopListening();state=null;showScreen(appMode?'welcome':'locked');$('global-status').textContent='Acceso privado';return;}if(!res.ok)throw new Error();state=await res.json();const recovered=!online;online=true;if(recovered){error('');presence();}
  // A client with billing on must have an active subscription before anything else (pay, then pair).
  if(state.role==='client'&&state.subscription?.required&&!state.subscription.active){showScreen('subscribe');renderSubscribe();listen();return;}
