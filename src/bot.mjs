@@ -87,7 +87,7 @@ export class Bot {
    let text;try{text=job.testId?this.store.get(this.w,'settings','keyword-test').text:await this.preview(msg.text);}catch{if(this.stopped)return;job.state=job.attempts>=3?'failed':'pending';job.nextAt=Date.now()+60000*job.attempts;save();return;}
    if(this.stopped)return;
    if(!text||!this.allowed(job)||this.c.epoch!==epoch){job.state='skipped';save();if(!text){const chat=this.c.history.chat(job.jid);chat.enabled=false;chat.handoffAt=Date.now();chat.handoffReason='keyword-review';this.c.history.save(chat);}return;}
-   text=this.personalize(text,this.c.history.chat(job.jid)).slice(0,4000);const id=randomBytes(16).toString('hex').toUpperCase();
+   text=this.personalize(text,this.c.history.chat(job.jid));if(!text){job.state='skipped';save();return;}text=text.slice(0,4000);const id=randomBytes(16).toString('hex').toUpperCase();
    job.state='sending';job.outgoingId=id;job.sentAt=Date.now();
    // Persist intent before the network call. An uncertain send is never retried automatically.
    this.store.transaction(()=>{save();budget.count++;this.store.put(this.w,'settings','budget',budget);if(job.testId){const t=this.store.get(this.w,'settings','keyword-test');t.consumedAt=Date.now();this.store.put(this.w,'settings','keyword-test',t);}const record={id:`${job.jid}:${id}`,key:{remoteJid:job.jid,id,fromMe:true},jid:job.jid,name:'Conversa',text,kind:'text',timestamp:Date.now(),fromMe:true,bot:true,status:'sending'},chat=this.c.history.chat(job.jid);if(job.testId||this.config().handoffAfterReply){chat.enabled=false;chat.handoffAt=Date.now();chat.handoffReason='greeting';}chat.last=preview(record);chat.latest=Math.max(chat.latest||0,record.timestamp);this.c.history.save(chat);this.store.put(this.w,'messages',record.id,record);});

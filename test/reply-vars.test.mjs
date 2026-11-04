@@ -21,6 +21,7 @@ test('{nombre} usa el primer nombre; se limpia si no se conoce',t=>{
  assert.equal(b.personalize('Hola {nombre}, gracias por escribir',{name:'Juan Pérez'}),'Hola Juan, gracias por escribir');
  assert.equal(b.personalize('Hola {nombre}, gracias',{name:'Contacto'}),'Hola, gracias');
  assert.equal(b.personalize('Bienvenido {nombre}!',{}),'Bienvenido!');
+ assert.equal(b.personalize('{nombre}',{name:'Contacto'}),'');  // solo variable sin dato → vacío (el bot lo omite)
 });
 
 test('un texto sin variables queda EXACTAMENTE igual',t=>{
