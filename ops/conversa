@@ -84,8 +84,12 @@ cmd_backup(){
 
 cmd_install(){
   local self; self="$(readlink -f "$0")"
-  cp "$self" /usr/local/bin/conversa && chmod +x /usr/local/bin/conversa
-  echo "✓ instalado: ahora puedes escribir  conversa  desde cualquier carpeta."
+  if [ "$self" != "/usr/local/bin/conversa" ]; then
+    cp "$self" /usr/local/bin/conversa && chmod +x /usr/local/bin/conversa
+    echo "✓ instalado: ahora puedes escribir  conversa  desde cualquier carpeta."
+  else
+    chmod +x /usr/local/bin/conversa; echo "✓ ya está en /usr/local/bin/conversa."
+  fi
   # Copia diaria automática a las 3:00 (si hay cron).
   if command -v crontab >/dev/null 2>&1; then
     ( crontab -l 2>/dev/null | grep -v 'conversa backup' ; echo "0 3 * * * CONVERSA_DIR=$DIR /usr/local/bin/conversa backup >>/var/log/conversa-backup.log 2>&1" ) | crontab -
