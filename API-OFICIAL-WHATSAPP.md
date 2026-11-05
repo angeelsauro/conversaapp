@@ -36,14 +36,25 @@ Decide esto **antes** de dar de alta el número en Meta.
 
 ---
 
-## 2. Lo que ya está hecho (del lado de Conversa)
+## 2. Lo que ya está hecho y PROBADO (del lado de Conversa)
 
 - ✅ El conector oficial (envía y recibe por la API de Meta).
-- ✅ El webhook público que Meta usa para entregarte los mensajes.
-- ✅ Validación de seguridad (firma de Meta) para que nadie falsifique mensajes.
+- ✅ El webhook público en `https://app.mutuomatch.com/api/wa/webhook`.
+- ✅ **Probado de verdad:** Meta llega al servidor y la firma de seguridad valida
+  (se comprobó con el botón "Probar" de Meta → el servidor registró `ok:true`).
+- ✅ Un comando a prueba de errores para poner las credenciales: **`conversa wa`**.
 - ✅ Todo apagado por defecto: no afecta la app publicada.
 
-Solo falta **tu configuración** en Meta y en el servidor.
+Solo falta usar un **número que sea tuyo** (ver la sección sobre el número de
+prueba, abajo).
+
+### ⚠️ Importante: el número de PRUEBA de Meta no sirve para recibir
+
+El número de prueba gratis (`+1 555 605-5877`) **pertenece a Meta**, no a ti.
+Meta recibe tus mensajes, pero **no los entrega a tu servidor** y **no te deja
+administrar su suscripción** (da `missing permissions`), porque esa cuenta no es
+tuya. Esto es un límite del número de prueba, no de Conversa. **Para recibir
+mensajes necesitas tu propio número dedicado** (sección 7).
 
 ---
 
@@ -70,28 +81,30 @@ Solo falta **tu configuración** en Meta y en el servidor.
    aquí.)
 6. En **Campos del webhook (Webhook fields)**, suscríbete a **messages**.
 
-### Paso 2 — En el servidor (archivo `deploy/.env`)
+### Paso 2 — En el servidor (comando `conversa wa`)
 
-Entra por SSH y edita `deploy/.env` (nunca compartas estos valores en fotos ni
-mensajes). Agrega estas líneas con **tus** datos:
-
-```
-CONVERSA_WA_TOKEN=el-token-de-acceso-de-meta
-CONVERSA_WA_PHONE_ID=el-identificador-del-numero
-CONVERSA_WA_VERIFY_TOKEN=conversa-andina-2026
-CONVERSA_WA_APP_SECRET=el-secreto-de-la-app
-CONVERSA_WA_NUMBER=51999888777
-```
-
-- `CONVERSA_WA_VERIFY_TOKEN` debe ser **exactamente igual** al que pusiste en
-  Meta en el Paso 1.
-- `CONVERSA_WA_NUMBER` es solo el número que se muestra (opcional).
-
-Guarda el archivo y reinicia Conversa:
+Entra por SSH y ejecuta:
 
 ```
-conversa restart
+conversa wa
 ```
+
+El comando te pide **uno por uno** y **valida antes de guardar** (si pegas algo
+corto o equivocado, lo rechaza sin dañar nada):
+
+1. **TOKEN** (largo, empieza con `EAA`, ~200 caracteres). Usa un **token
+   permanente** de un "usuario del sistema" (no el temporal, que caduca en 24 h).
+2. **ID del número** (Phone Number ID). Enter para el de prueba, o pega el de tu
+   número real.
+3. **Token de verificación** (Enter = `conversa-andina-2026`), el mismo que en Meta.
+4. **SECRETO de la app** (corto, empieza con `00`, ~32 caracteres).
+
+Luego escribes `si`, y el comando guarda, reinicia y suscribe la app solo.
+
+> **Token permanente:** Business Settings → Usuarios del sistema → tu usuario →
+> "Generar token" → app Conversa → caducidad **Nunca** → permisos
+> `whatsapp_business_management` y `whatsapp_business_messaging`. Cópialo con el
+> botón **Copiar** (es larguísimo) y guárdalo: se muestra una sola vez.
 
 ### Paso 3 — Probar
 
@@ -129,3 +142,41 @@ API oficial: cada cliente necesitaría su propia cuenta de empresa en Meta. Por
 eso esta conexión oficial es, de momento, para **el número de Andina Music**, no
 para las cuentas de clientes. Si en el futuro quieres ofrecer la API oficial a
 clientes, hay que diseñar ese flujo aparte.
+
+---
+
+## 7. Conectar tu número dedicado REAL (hoja de ruta)
+
+El número de prueba de Meta sirve para enviar, pero **no entrega los mensajes
+entrantes a tu servidor** (es un número compartido de Meta). Para recibir de
+verdad necesitas **tu propio número**.
+
+### Antes de empezar: consigue el número
+Un número que:
+- Puedas **recibir un código** por SMS o llamada (para verificarlo una vez).
+- **NO esté activo en WhatsApp** en ningún teléfono. Si ya tiene WhatsApp,
+  elimínalo primero en ese teléfono (WhatsApp → Ajustes → Cuenta → Eliminar cuenta).
+- Quieras dedicar **solo a Conversa** (ya no se usará como WhatsApp normal).
+
+Puede ser un chip nuevo, un número libre, o un número virtual que reciba SMS.
+
+### Paso 1 — Agregar el número en Meta
+Tu app → **WhatsApp → "Administrar números de teléfono" → "Agregar número de
+teléfono"**: nombre visible (ej. Andina Music), categoría, el número, y verifícalo
+con el código por SMS o llamada. Al quedar registrado tendrá su **propio
+Phone Number ID**.
+
+### Paso 2 — Reconectar Conversa
+En el servidor: `conversa wa`, y pon el **mismo token** permanente, el **NUEVO
+Phone Number ID**, Enter en verify, y el **mismo secreto**. El comando suscribe la
+app — y esta vez **sí funciona**, porque el número es tuyo.
+
+### Paso 3 — Probar
+Envías un WhatsApp al número real → aparece en el panel de Conversa. Respondes
+desde el panel → llega al teléfono.
+
+### Paso 4 (después, para escalar) — Verificación del negocio
+Para enviar sin límites, Meta pide **verificar el negocio** (Andina Music L.L.C.):
+Business Settings → Centro de seguridad → Verificación del negocio (con documentos
+del negocio; lo revisa Meta en días). **No hace falta** para empezar a recibir y
+responder con el número registrado.
