@@ -6,11 +6,13 @@ import {fileURLToPath} from 'node:url';
 import {resolve,join} from 'node:path';
 import {Store} from './store.mjs';
 import {Connector} from './connector.mjs';
+import {CloudConnector} from './cloud-connector.mjs';
 import {Bot} from './bot.mjs';
 import {lockDirectory} from './lock.mjs';
 import {History,direct} from './history.mjs';
 import {vapidKeys,validSubscription,sendPush} from './push.mjs';
 import {makePlayVerifier,loadServiceAccount} from './play-billing.mjs';
+import {verifyChallenge,validSignature,parseWebhook} from './cloud-api.mjs';
 const root=resolve(fileURLToPath(new URL('..',import.meta.url)));
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const scryptAsync=promisify(scrypt);
@@ -34,7 +36,7 @@ const brandAllowed=ctx=>ctx?.role==='owner'||(ctx?.role==='client'&&!!ctx.accoun
 const pngSize=b=>b.length>24&&b.readUInt32BE(0)===0x89504e47&&b.readUInt32BE(4)===0x0d0a1a0a&&b.toString('latin1',12,16)==='IHDR'?[b.readUInt32BE(16),b.readUInt32BE(20)]:null;
 // Rate limits count IPv4 clients by address and IPv6 clients by /64 (one home or mobile network).
 export function clientKey(ip){ip=String(ip||'').split('%')[0];const v4=/^(?:::ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);if(v4)return v4[1];if(!ip.includes(':'))return ip;const [head,tail='']=ip.split('::'),a=head?head.split(':'):[],b=tail?tail.split(':'):[],full=[...a,...Array(Math.max(0,8-a.length-b.length)).fill('0'),...b];return full.slice(0,4).map(x=>(x.toLowerCase().replace(/^0+(?=.)/,''))).join(':')+'::/64';}
-export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data'),port=4318,connectorFactory,respond,publicOrigin=process.env.PUBLIC_ORIGIN||undefined,appOrigin=process.env.APP_ORIGIN||undefined,testEndpoints=testEndpointsEnabled(),pushSender=sendPush,avatarFetch=globalThis.fetch,maxAccounts=Number(process.env.CONVERSA_MAX_ACCOUNTS||30),trustProxyIp=process.env.CONVERSA_TRUST_CF==='1',android={package:process.env.CONVERSA_ANDROID_PACKAGE,sha256:process.env.CONVERSA_ANDROID_SHA256},demoAccount=process.env.CONVERSA_DEMO_ACCOUNT||undefined,demoFactory,verifyPurchase=defaultVerifyPurchase,subProductId=process.env.CONVERSA_SUB_PRODUCT||'conversa_mensual',requireSubscription=process.env.CONVERSA_REQUIRE_SUB==='1'}={}) {
+export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data'),port=4318,connectorFactory,respond,publicOrigin=process.env.PUBLIC_ORIGIN||undefined,appOrigin=process.env.APP_ORIGIN||undefined,testEndpoints=testEndpointsEnabled(),pushSender=sendPush,avatarFetch=globalThis.fetch,maxAccounts=Number(process.env.CONVERSA_MAX_ACCOUNTS||30),trustProxyIp=process.env.CONVERSA_TRUST_CF==='1',android={package:process.env.CONVERSA_ANDROID_PACKAGE,sha256:process.env.CONVERSA_ANDROID_SHA256},demoAccount=process.env.CONVERSA_DEMO_ACCOUNT||undefined,demoFactory,verifyPurchase=defaultVerifyPurchase,subProductId=process.env.CONVERSA_SUB_PRODUCT||'conversa_mensual',requireSubscription=process.env.CONVERSA_REQUIRE_SUB==='1',cloudConfig={token:process.env.CONVERSA_WA_TOKEN,phoneId:process.env.CONVERSA_WA_PHONE_ID,verifyToken:process.env.CONVERSA_WA_VERIFY_TOKEN,appSecret:process.env.CONVERSA_WA_APP_SECRET,number:process.env.CONVERSA_WA_NUMBER}}={}) {
  const production=process.env.NODE_ENV==='production';
  if(production&&(!publicOrigin?.startsWith('https://')||!process.env.CONVERSA_KEY_FILE||!process.env.CONVERSA_OWNER_TOKEN_FILE))throw new Error('Production requires HTTPS origin and external secret files');
  for(const o of [publicOrigin,appOrigin])if(o&&new URL(o).origin!==o)throw new Error('PUBLIC_ORIGIN and APP_ORIGIN must be exact origins');
@@ -49,11 +51,16 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  const changed=(w='owner')=>{version++;dirty.add(w);if(flush)return;flush=setTimeout(()=>{flush=null;for(const s of streams)if(dirty.has(s.w))s.res.write(`event: change\ndata: ${version}\n\n`);dirty.clear();},120);flush.unref?.();};
  // A deleted account's workspace never gets data back from a request or download that was still running.
  for(const name of ['put','remove','clear']){const original=store[name].bind(store);store[name]=(w,b,...rest)=>{if(name==='put'&&gone.has(w))return;const result=original(w,b,...rest);if(['messages','chats','settings','queue'].includes(b))changed(w);return result;};}
+ // API oficial de WhatsApp (Cloud API), opcional: si hay token + id de número configurados, el espacio del
+ // propietario envía y recibe por la API de Meta en vez del conector no oficial. Apagado salvo que se configure.
+ const cloud={token:(cloudConfig?.token||'').trim(),phoneId:(cloudConfig?.phoneId||'').trim(),verifyToken:(cloudConfig?.verifyToken||'').trim(),appSecret:(cloudConfig?.appSecret||'').trim(),number:(cloudConfig?.number||'').trim()};
+ const cloudEnabled=!!(cloud.token&&cloud.phoneId);
  // Workspaces: the owner's private panel ('owner') and one isolated workspace per client account ('u_…').
  const tenants=new Map();
  function wire(t){if(t.connector.history)t.connector.history.onIncoming=(msg,chat)=>{notify(t.w,msg,chat).catch(()=>{});};}
  function makeTenant(w,account){
-  const connector=account?.demo?demoFactory(store,w):connectorFactory?connectorFactory(store,w):new Connector(store,w);connector.workspace ||=w;
+  const connector=account?.demo?demoFactory(store,w):connectorFactory?connectorFactory(store,w):(cloudEnabled&&w==='owner')?new CloudConnector(store,w):new Connector(store,w);connector.workspace ||=w;
+  if(cloudEnabled&&w==='owner'&&typeof connector.configure==='function')connector.configure(cloud);
   if(account&&!account.demo)connector.expectedNumber=account.number;
   connector.history?.backfillLast?.();const bot=new Bot(store,connector,{respond}),t={w,connector,bot,accountId:account?.id||null};wire(t);tenants.set(w,t);if(started)bot.start();return t;}
  let started=false;
@@ -170,6 +177,28 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    // The admin Android app (opens the private panel): downloadable only from the panel host, which Cloudflare Access guards.
    if(req.method==='GET'&&path==='/descargas/conversa-admin.apk'){const file=join(root,'public','downloads','conversa-admin.apk');if(!ownerHost(host)||!existsSync(file))return json(404,{error:'Ruta no encontrada.'});const data=readFileSync(file);res.writeHead(200,{'Content-Type':'application/vnd.android.package-archive','Content-Length':data.length,'Content-Disposition':'attachment; filename="Conversa-Admin.apk"'});return res.end(data);}
    if(req.method==='GET'&&path==='/api/config')return json(200,{mode:appHosts.has(host)?'app':'panel',signup:accounts().length<maxAccounts,terms:TERMS_VERSION});
+   // ---- API oficial de WhatsApp (Cloud API): webhook público que Meta llama ----
+   // GET: verificación del webhook (handshake). POST: entrega de mensajes, validada con la firma del
+   // secreto de la app antes de procesarse. Apagado salvo que se configure el token de verificación.
+   if(path==='/api/wa/webhook'){
+    if(!cloud.verifyToken)return json(404,{error:'Ruta no encontrada.'});
+    if(req.method==='GET'){
+     const challenge=verifyChallenge({mode:url.searchParams.get('hub.mode'),token:url.searchParams.get('hub.verify_token'),challenge:url.searchParams.get('hub.challenge'),verifyToken:cloud.verifyToken});
+     if(challenge===null)return json(403,{error:'Verificación inválida.'});
+     res.writeHead(200,{'Content-Type':'text/plain; charset=utf-8'});return res.end(challenge);
+    }
+    if(req.method==='POST'){
+     let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>262144){res.writeHead(413);return res.end();}}
+     if(cloud.appSecret&&!validSignature(raw,req.headers['x-hub-signature-256'],cloud.appSecret)){res.writeHead(403);return res.end();}
+     let parsed=null;try{parsed=parseWebhook(JSON.parse(raw||'{}'));}catch{res.writeHead(400);return res.end();}
+     // Enruta al espacio cuyo conector oficial tiene este id de número; ignora lo que no reconoce.
+     const target=[...tenants.values()].find(t=>parsed.phoneId&&t.connector?.creds?.()?.phoneId===parsed.phoneId);
+     if(target&&typeof target.connector.ingestWebhook==='function'){try{target.connector.ingestWebhook(parsed);}catch{}}
+     // Meta espera un 200 rápido para no reintentar.
+     res.writeHead(200,{'Content-Type':'text/plain; charset=utf-8'});return res.end('EVENT_RECEIVED');
+    }
+    return json(404,{error:'Ruta no encontrada.'});
+   }
    const sid=req.headers.cookie?.split(';').map(c=>c.trim()).find(c=>c.startsWith(cookieName+'='))?.slice(cookieName.length+1);
    const sidHash=sid&&sid.length===64&&/^[a-f0-9]+$/.test(sid)?hash(sid):null;
    // Who is calling: the owner (private panel) or a client account (its own workspace only).

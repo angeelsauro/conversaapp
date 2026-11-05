@@ -20,6 +20,13 @@ services:
       CONVERSA_SUB_PRODUCT: ${CONVERSA_SUB_PRODUCT:-conversa_mensual}
       # Opcional (verificación en el servidor, "opción B"): JSON de la cuenta de servicio de Google, en una sola línea.
       CONVERSA_GOOGLE_SA_JSON: ${CONVERSA_GOOGLE_SA_JSON:-}
+      # API OFICIAL de WhatsApp (Cloud API), opcional. Si pones token + id de número, el panel del propietario
+      # envía y recibe por la API de Meta en vez del conector por QR. Todo esto se llena en deploy/.env. Ver API-OFICIAL-WHATSAPP.md.
+      CONVERSA_WA_TOKEN: ${CONVERSA_WA_TOKEN:-}
+      CONVERSA_WA_PHONE_ID: ${CONVERSA_WA_PHONE_ID:-}
+      CONVERSA_WA_VERIFY_TOKEN: ${CONVERSA_WA_VERIFY_TOKEN:-}
+      CONVERSA_WA_APP_SECRET: ${CONVERSA_WA_APP_SECRET:-}
+      CONVERSA_WA_NUMBER: ${CONVERSA_WA_NUMBER:-}
       CONVERSA_KEY_FILE: /run/secrets/encryption_key
       CONVERSA_OWNER_TOKEN_FILE: /run/secrets/owner_token
     volumes:
