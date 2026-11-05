@@ -53,3 +53,20 @@ test('conector: un webhook entrante aparece en la bandeja con nombre y texto',t=
  assert.equal(chat.name,'Juan');
  assert.equal(chat.last.text,'buenas');
 });
+
+test('conector: configurar fija el punto de corte, así los mensajes entrantes son EN VIVO (no viejos)',t=>{
+ const {c}=make(t);
+ c.configure({token:'TKN',phoneId:'134'});// sin establish manual: ensureCutoff debe haberlo fijado
+ assert.ok(c.history.meta().firstLinkedAt,'se fijó firstLinkedAt al configurar');
+ c.ingestWebhook({phoneId:'134',messages:[{from:'519',id:'wamid.V',timestamp:Date.now(),type:'text',text:'hola',name:'X'}]});
+ assert.notEqual(c.history.chat('519@s.whatsapp.net').classification,'old','el chat NO queda marcado como historial viejo');
+});
+
+test('conector: una foto entrante se guarda como imagen (no como texto) y no dispara el bot',t=>{
+ const {store,c}=make(t);
+ c.configure({token:'TKN',phoneId:'134'});
+ c.ingestWebhook({phoneId:'134',messages:[{from:'519',id:'wamid.IMG',timestamp:Date.now(),type:'image',text:'',name:'X'}]});
+ const chat=c.history.chat('519@s.whatsapp.net');
+ assert.equal(chat.last.kind,'image','se muestra como foto, con su ícono');
+ assert.equal(store.count('owner','queue'),0,'una foto nunca encola una respuesta del bot');
+});
