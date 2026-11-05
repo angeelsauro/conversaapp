@@ -13,6 +13,7 @@ import {History,direct} from './history.mjs';
 import {vapidKeys,validSubscription,sendPush} from './push.mjs';
 import {makePlayVerifier,loadServiceAccount} from './play-billing.mjs';
 import {verifyChallenge,validSignature,parseWebhook} from './cloud-api.mjs';
+import {MediaVault} from './media-vault.mjs';
 const root=resolve(fileURLToPath(new URL('..',import.meta.url)));
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const scryptAsync=promisify(scrypt);
@@ -36,7 +37,7 @@ const brandAllowed=ctx=>ctx?.role==='owner'||(ctx?.role==='client'&&!!ctx.accoun
 const pngSize=b=>b.length>24&&b.readUInt32BE(0)===0x89504e47&&b.readUInt32BE(4)===0x0d0a1a0a&&b.toString('latin1',12,16)==='IHDR'?[b.readUInt32BE(16),b.readUInt32BE(20)]:null;
 // Rate limits count IPv4 clients by address and IPv6 clients by /64 (one home or mobile network).
 export function clientKey(ip){ip=String(ip||'').split('%')[0];const v4=/^(?:::ffff:)?(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);if(v4)return v4[1];if(!ip.includes(':'))return ip;const [head,tail='']=ip.split('::'),a=head?head.split(':'):[],b=tail?tail.split(':'):[],full=[...a,...Array(Math.max(0,8-a.length-b.length)).fill('0'),...b];return full.slice(0,4).map(x=>(x.toLowerCase().replace(/^0+(?=.)/,''))).join(':')+'::/64';}
-export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data'),port=4318,connectorFactory,respond,publicOrigin=process.env.PUBLIC_ORIGIN||undefined,appOrigin=process.env.APP_ORIGIN||undefined,testEndpoints=testEndpointsEnabled(),pushSender=sendPush,avatarFetch=globalThis.fetch,maxAccounts=Number(process.env.CONVERSA_MAX_ACCOUNTS||30),trustProxyIp=process.env.CONVERSA_TRUST_CF==='1',android={package:process.env.CONVERSA_ANDROID_PACKAGE,sha256:process.env.CONVERSA_ANDROID_SHA256},demoAccount=process.env.CONVERSA_DEMO_ACCOUNT||undefined,demoFactory,verifyPurchase=defaultVerifyPurchase,subProductId=process.env.CONVERSA_SUB_PRODUCT||'conversa_mensual',requireSubscription=process.env.CONVERSA_REQUIRE_SUB==='1',cloudConfig={token:process.env.CONVERSA_WA_TOKEN,phoneId:process.env.CONVERSA_WA_PHONE_ID,verifyToken:process.env.CONVERSA_WA_VERIFY_TOKEN,appSecret:process.env.CONVERSA_WA_APP_SECRET,number:process.env.CONVERSA_WA_NUMBER}}={}) {
+export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data'),port=4318,connectorFactory,respond,publicOrigin=process.env.PUBLIC_ORIGIN||undefined,appOrigin=process.env.APP_ORIGIN||undefined,testEndpoints=testEndpointsEnabled(),pushSender=sendPush,avatarFetch=globalThis.fetch,maxAccounts=Number(process.env.CONVERSA_MAX_ACCOUNTS||30),trustProxyIp=process.env.CONVERSA_TRUST_CF==='1',android={package:process.env.CONVERSA_ANDROID_PACKAGE,sha256:process.env.CONVERSA_ANDROID_SHA256},demoAccount=process.env.CONVERSA_DEMO_ACCOUNT||undefined,demoFactory,verifyPurchase=defaultVerifyPurchase,subProductId=process.env.CONVERSA_SUB_PRODUCT||'conversa_mensual',requireSubscription=process.env.CONVERSA_REQUIRE_SUB==='1',cloudConfig={token:process.env.CONVERSA_WA_TOKEN,phoneId:process.env.CONVERSA_WA_PHONE_ID,verifyToken:process.env.CONVERSA_WA_VERIFY_TOKEN,appSecret:process.env.CONVERSA_WA_APP_SECRET,number:process.env.CONVERSA_WA_NUMBER},mediaMaxBytes=Math.round(Number(process.env.CONVERSA_MEDIA_MAX_GB??8)*1073741824)}={}) {
  const production=process.env.NODE_ENV==='production';
  if(production&&(!publicOrigin?.startsWith('https://')||!process.env.CONVERSA_KEY_FILE||!process.env.CONVERSA_OWNER_TOKEN_FILE))throw new Error('Production requires HTTPS origin and external secret files');
  for(const o of [publicOrigin,appOrigin])if(o&&new URL(o).origin!==o)throw new Error('PUBLIC_ORIGIN and APP_ORIGIN must be exact origins');
@@ -55,6 +56,9 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
  // propietario envía y recibe por la API de Meta en vez del conector no oficial. Apagado salvo que se configure.
  const cloud={token:(cloudConfig?.token||'').trim(),phoneId:(cloudConfig?.phoneId||'').trim(),verifyToken:(cloudConfig?.verifyToken||'').trim(),appSecret:(cloudConfig?.appSecret||'').trim(),number:(cloudConfig?.number||'').trim()};
  const cloudEnabled=!!(cloud.token&&cloud.phoneId);
+ // Guarda los archivos (fotos, videos, audios, documentos) cifrados en el disco, con tope de espacio,
+ // para que sigan disponibles aunque WhatsApp los borre de sus servidores. Tope 0 = desactivado.
+ const vault=new MediaVault(store,join(dir,'media'),{maxBytes:mediaMaxBytes});
  // Workspaces: the owner's private panel ('owner') and one isolated workspace per client account ('u_…').
  const tenants=new Map();
  function wire(t){if(t.connector.history)t.connector.history.onIncoming=(msg,chat)=>{notify(t.w,msg,chat).catch(()=>{});};}
@@ -109,6 +113,22 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    if(data)chat.photo=Date.now();else delete chat.photo;if(data||next.photo)t.connector.history.save(chat);
   }finally{avatars.busy=false;}
  }
+ // Guarda en disco, poco a poco (uno por vuelta), los archivos recientes de los chats conectados,
+ // para conservarlos antes de que WhatsApp los borre de sus servidores (solo multimedia de los últimos 21 días).
+ const mediaSaver={busy:false,turn:0};
+ async function mediaTick(){
+  if(!vault.enabled()||mediaSaver.busy)return;
+  const ready=[...tenants.values()].filter(t=>t.connector.status==='connected'&&typeof t.connector.downloadMedia==='function');if(!ready.length)return;
+  mediaSaver.busy=true;
+  try{const cutoff=Date.now()-21*86400000;let t,job;
+   for(let i=0;i<ready.length&&!job;i++){t=ready[(mediaSaver.turn+i)%ready.length];
+    job=store.list(t.w,'messages',200).find(x=>x.timestamp>=cutoff&&!x.viewOnce&&['image','video','audio','document','sticker'].includes(x.kind)&&(x.media?.size||0)<=MEDIA_MAX&&!vault.has(t.w,x.id)&&store.get(t.w,'media',x.id));}
+   mediaSaver.turn++;if(!job)return;
+   const source=store.get(t.w,'media',job.id);if(!source)return;
+   const turn=slot();if(!turn)return;
+   try{const data=Buffer.from(await turn.then(()=>t.connector.downloadMedia(source,{max:MEDIA_MAX})));if(data.length<=MEDIA_MAX&&tenants.has(t.w))vault.save(t.w,job.id,data);}catch{}finally{release();}
+  }finally{mediaSaver.busy=false;}
+ }
  const lite=m=>m.media?.thumb?{...m,media:{...m.media,thumb:undefined}}:m;
  // Profile: large photo and «info» are fetched from WhatsApp only when someone opens a profile (kept briefly in memory).
  const profiles=new Map(),keep=(map,key,value,limit)=>{map.delete(key);map.set(key,value);while(map.size>limit)map.delete(map.keys().next().value);};
@@ -144,7 +164,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
   if(t){try{if(t.connector.status==='connected')await t.connector.disconnect();}catch{}t.bot.stop();t.connector.pause?.(false);t.connector.stop?.();tenants.delete(account.w);}
   dropSessions(account);
   store.purge(account.w);store.remove('system','numbers',account.number);store.remove('system','accounts',account.id);
-  forget(account.w+'|');for(const k of profiles.keys())if(k.startsWith(account.w+'|'))profiles.delete(k);for(const k of visible.keys())if(k.startsWith(account.w+'|'))visible.delete(k);endStreams(s=>s.w===account.w);recoveries.delete(account.number);
+  forget(account.w+'|');vault.purge(account.w);for(const k of profiles.keys())if(k.startsWith(account.w+'|'))profiles.delete(k);for(const k of visible.keys())if(k.startsWith(account.w+'|'))visible.delete(k);endStreams(s=>s.w===account.w);recoveries.delete(account.number);
  }
  const server=http.createServer(async(req,res)=>{
   res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Cross-Origin-Opener-Policy','same-origin');res.setHeader('Cross-Origin-Resource-Policy','same-origin');res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=(), payment=()');if(secure)res.setHeader('Strict-Transport-Security','max-age=31536000');
@@ -249,15 +269,21 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     if(path==='/api/media'){
      const id=url.searchParams.get('id')||'',m=id.length<300&&store.get(w,'messages',id),source=m&&!m.viewOnce&&store.get(w,'media',id),key=w+'|'+id;
      if(!source)return json(404,{error:'Archivo no disponible.'});
+     const base=String(source.message.mimetype||'').split(';')[0].trim().toLowerCase(),type=INLINE.test(base)?base:'application/octet-stream',name=String(m.media?.name||'archivo').replace(/[\u0000-\u001f"\\]/g,'').slice(0,150).toWellFormed()||'archivo';
      let file=mediaCache.get(key);
      if(file){mediaCache.delete(key);mediaCache.set(key,file);}
      else{
-      if((source.message.fileLength||0)>MEDIA_MAX)return json(413,{error:'Archivo demasiado grande: ábrelo en WhatsApp.'});
-      if(c.status!=='connected'||typeof c.downloadMedia!=='function')return json(409,{error:'Conecta WhatsApp para abrir archivos.'});
-      try{let pending=downloads.get(key);if(!pending){const turn=slot();if(!turn)return json(503,{error:'Demasiadas descargas a la vez. Inténtalo en un momento.'});pending=turn.then(()=>c.downloadMedia(source,{max:MEDIA_MAX})).finally(release);downloads.set(key,pending);pending.finally(()=>downloads.delete(key)).catch(()=>{});}
-       const data=Buffer.from(await pending);if(data.length>MEDIA_MAX)return json(413,{error:'Archivo demasiado grande: ábrelo en WhatsApp.'});
-       const base=String(source.message.mimetype||'').split(';')[0].trim().toLowerCase();file={data,type:INLINE.test(base)?base:'application/octet-stream',name:String(m.media?.name||'archivo').replace(/[\u0000-\u001f"\\]/g,'').slice(0,150).toWellFormed()||'archivo'};if(!mediaCache.has(key)&&tenants.has(w))remember(key,file);}
-      catch{return json(502,{error:'WhatsApp no entregó el archivo. Ábrelo en el teléfono.'});}
+      // Si ya está guardado en disco (cifrado), se sirve desde ahí: funciona aunque WhatsApp lo haya borrado o esté desconectado.
+      const saved=vault.load(w,id);
+      if(saved){file={data:saved,type,name};if(tenants.has(w)&&!mediaCache.has(key))remember(key,file);}
+      else{
+       if((source.message.fileLength||0)>MEDIA_MAX)return json(413,{error:'Archivo demasiado grande: ábrelo en WhatsApp.'});
+       if(c.status!=='connected'||typeof c.downloadMedia!=='function')return json(409,{error:'Conecta WhatsApp para abrir archivos.'});
+       try{let pending=downloads.get(key);if(!pending){const turn=slot();if(!turn)return json(503,{error:'Demasiadas descargas a la vez. Inténtalo en un momento.'});pending=turn.then(()=>c.downloadMedia(source,{max:MEDIA_MAX})).finally(release);downloads.set(key,pending);pending.finally(()=>downloads.delete(key)).catch(()=>{});}
+        const data=Buffer.from(await pending);if(data.length>MEDIA_MAX)return json(413,{error:'Archivo demasiado grande: ábrelo en WhatsApp.'});
+        file={data,type,name};if(tenants.has(w)){vault.save(w,id,data);if(!mediaCache.has(key))remember(key,file);}}
+       catch{return json(502,{error:'WhatsApp no entregó el archivo. Ábrelo en el teléfono.'});}
+      }
      }
      // Byte ranges: Safari only plays audio and video from servers that support them.
      const size=file.data.length,range=/^bytes=(\d*)-(\d*)$/.exec(req.headers.range||'');let start=0,end=size-1;
@@ -468,7 +494,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    else if(path==='/api/chat/delete'){
     if(!direct(input.jid))throw new Error('Chat inválido');
     const chat=c.history.chat(input.jid);chat.enabled=false;chat.deleted=true;chat.classification='old';chat.name='Contacto eliminado';delete chat.earliest;delete chat.latest;c.history.save(chat);
-    for(const m of store.list(w,'messages',-1))if(c.history.canonical(m.jid)===chat.jid){store.remove(w,'messages',m.id);store.remove(w,'media',m.id);forget(w+'|'+m.id);}
+    for(const m of store.list(w,'messages',-1))if(c.history.canonical(m.jid)===chat.jid){store.remove(w,'messages',m.id);store.remove(w,'media',m.id);vault.remove(w,m.id);forget(w+'|'+m.id);}
     store.remove(w,'avatars',chat.jid);profiles.delete(w+'|photo:'+chat.jid);profiles.delete(w+'|about:'+chat.jid);delete chat.photo;c.history.save(chat);
     for(const j of store.list(w,'queue',-1))if(c.history.canonical(j.jid)===chat.jid)store.remove(w,'queue',j.id);
    }else return json(404,{error:'Ruta no encontrada.'});
@@ -476,7 +502,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
   }catch(error){return json(400,{error:ERRORS_SHOWN.includes(path)?error.message:'No se pudo completar la acción.'});}
  });
  server.requestTimeout=15000;server.headersTimeout=10000;
- let closed=false,monitor,watch,avatarTimer,sweeper,lastStatus;const signals=new Map();
+ let closed=false,monitor,watch,avatarTimer,mediaTimer,sweeper,lastStatus;const signals=new Map();
  // The phone's own chat hears about every new link, so a number registered by someone else is noticed at once.
  function linkNotice(t,a){const messageId=randomBytes(16).toString('hex').toUpperCase();t.connector.history?.skip?.(messageId);
   Promise.resolve(t.connector.socket?.sendMessage(a.number+'@s.whatsapp.net',{text:'Conversa quedó vinculada a este WhatsApp. En Dispositivos vinculados aparece como «Chrome (Ubuntu)». Si no fuiste tú, ciérrala ahí.'},{messageId})).catch(()=>{});}
@@ -485,7 +511,7 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
   for(const [k,v] of limits)if(now-v.start>v.window)limits.delete(k);for(const [k,seen] of visible)if(now-seen>75000)visible.delete(k);for(const [n,r] of recoveries)if(r.expires<now)recoveries.delete(n);
   for(const a of accounts())if(!a.linked&&!a.demo&&now-a.createdAt>1800000&&!signingUp.has(a.number)&&tenants.get(a.w)?.connector.status!=='connected')await removeAccount(a);
  }
- return {server,store,connector,bot,tenants,avatarTick,changed,start:async()=>{
+ return {server,store,connector,bot,tenants,vault,avatarTick,mediaTick,changed,start:async()=>{
    started=true;await connector.resume?.();bot.start();
    // Client workspaces that finished linking reconnect on their own after a restart, like the owner's.
    for(const a of accounts())if(a.linked&&(!a.demo||demoFactory)){const t=tenantOf(a);try{await t.connector.resume?.();}catch{}}
@@ -495,8 +521,9 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
    watch=setInterval(()=>{for(const t of tenants.values()){const k=t.connector,signal=[k.status,k.qr,k.pairingCode,k.note,k.identity?.number].join('|');if(signal!==signals.get(t.w)){signals.set(t.w,signal);changed(t.w);}
      if(t.accountId&&k.status==='connected'){const a=store.get('system','accounts',t.accountId);if(a&&!a.linked){a.linked=true;a.linkedAt=Date.now();store.put('system','accounts',a.id,a);changed(t.w);if(!a.demo)linkNotice(t,a);}}}},500);watch.unref?.();
    avatarTimer=setInterval(()=>{avatarTick().catch(()=>{});},1500);avatarTimer.unref?.();
+   mediaTimer=setInterval(()=>{mediaTick().catch(()=>{});},6000);mediaTimer.unref?.();
    sweeper=setInterval(()=>{housekeeping().catch(()=>{});},60000);sweeper.unref?.();},
-  housekeeping,close:()=>{if(closed)return;closed=true;clearInterval(monitor);clearInterval(watch);clearInterval(avatarTimer);clearInterval(sweeper);clearTimeout(flush);for(const s of streams)s.res.end();for(const t of tenants.values()){t.bot.stop();t.connector.pause?.(false);t.connector.stop?.();}server.close();store.close();unlock();}};
+  housekeeping,close:()=>{if(closed)return;closed=true;clearInterval(monitor);clearInterval(watch);clearInterval(avatarTimer);clearInterval(mediaTimer);clearInterval(sweeper);clearTimeout(flush);for(const s of streams)s.res.end();for(const t of tenants.values()){t.bot.stop();t.connector.pause?.(false);t.connector.stop?.();}server.close();store.close();unlock();}};
 }
 if(process.argv[1]===fileURLToPath(import.meta.url)){
  const port=Number(process.env.PORT||4318),host=process.env.HOST||'127.0.0.1';

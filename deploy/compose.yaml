@@ -27,6 +27,9 @@ services:
       CONVERSA_WA_VERIFY_TOKEN: ${CONVERSA_WA_VERIFY_TOKEN:-}
       CONVERSA_WA_APP_SECRET: ${CONVERSA_WA_APP_SECRET:-}
       CONVERSA_WA_NUMBER: ${CONVERSA_WA_NUMBER:-}
+      # Guardar archivos (fotos, videos, audios) en el servidor para que no se pierdan cuando WhatsApp los borra.
+      # Es el tope de disco en GB (por defecto 8). Pon 0 para desactivar y volver a pedirlos a WhatsApp al abrirlos.
+      CONVERSA_MEDIA_MAX_GB: ${CONVERSA_MEDIA_MAX_GB:-8}
       CONVERSA_KEY_FILE: /run/secrets/encryption_key
       CONVERSA_OWNER_TOKEN_FILE: /run/secrets/owner_token
     volumes:
