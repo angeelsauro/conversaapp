@@ -184,17 +184,19 @@ export function createApp({dir=process.env.CONVERSA_DATA_DIR||join(root,'.data')
     if(!cloud.verifyToken)return json(404,{error:'Ruta no encontrada.'});
     if(req.method==='GET'){
      const challenge=verifyChallenge({mode:url.searchParams.get('hub.mode'),token:url.searchParams.get('hub.verify_token'),challenge:url.searchParams.get('hub.challenge'),verifyToken:cloud.verifyToken});
+     console.log(JSON.stringify({event:'wa_webhook_verify',ok:challenge!==null}));
      if(challenge===null)return json(403,{error:'Verificación inválida.'});
      res.writeHead(200,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});return res.end(challenge);
     }
     if(req.method==='POST'){
      let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>262144){res.writeHead(413);return res.end();}}
      // Exige la firma de Meta (secreto de la app): sin secreto configurado o firma inválida, se rechaza.
-     if(!validSignature(raw,req.headers['x-hub-signature-256'],cloud.appSecret)){res.writeHead(403);return res.end();}
-     let parsed=null;try{parsed=parseWebhook(JSON.parse(raw||'{}'));}catch{res.writeHead(400);return res.end();}
+     if(!validSignature(raw,req.headers['x-hub-signature-256'],cloud.appSecret)){console.log(JSON.stringify({event:'wa_webhook',ok:false,reason:'firma_invalida'}));res.writeHead(403);return res.end();}
+     let parsed=null;try{parsed=parseWebhook(JSON.parse(raw||'{}'));}catch{console.log(JSON.stringify({event:'wa_webhook',ok:false,reason:'json_invalido'}));res.writeHead(400);return res.end();}
      // Enruta al espacio cuyo conector oficial tiene este id de número; ignora lo que no reconoce.
      const target=[...tenants.values()].find(t=>parsed.phoneId&&t.connector?.creds?.()?.phoneId===parsed.phoneId);
-     if(target&&typeof target.connector.ingestWebhook==='function'){try{target.connector.ingestWebhook(parsed);}catch{}}
+     let ingested=0;if(target&&typeof target.connector.ingestWebhook==='function'){try{ingested=target.connector.ingestWebhook(parsed);}catch{}}
+     console.log(JSON.stringify({event:'wa_webhook',ok:true,phoneId:parsed.phoneId,matched:!!target,messages:parsed.messages.length,ingested,statuses:parsed.statuses.length}));
      // Meta espera un 200 rápido para no reintentar.
      res.writeHead(200,{'Content-Type':'text/plain; charset=utf-8'});return res.end('EVENT_RECEIVED');
     }
