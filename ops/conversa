@@ -67,6 +67,40 @@ cmd_code(){
   echo "Entra una vez con este enlace y, en Ajustes, pon un PIN fácil de recordar."
 }
 
+# Conecta (o actualiza) las credenciales de la API oficial de WhatsApp (Cloud API), a prueba de errores:
+# pide cada valor, lo valida ANTES de guardar, escribe el bloque limpio, reinicia y suscribe la app.
+cmd_wa(){
+  need_dir
+  local env="deploy/.env" waba="${CONVERSA_WA_WABA:-1399744992241822}"
+  echo "== Conectar la API oficial de WhatsApp (Cloud API) =="
+  echo "Necesitas de Meta: el TOKEN (largo, empieza con EAA) y el SECRETO de la app (corto, ~32)."
+  echo "Pega cada valor cuando se te pida. Si algo sale mal, NO se guarda nada."
+  echo
+  printf 'Pega el TOKEN (largo, EAA...) y pulsa Enter:\n> '
+  IFS= read -r TOK; TOK="$(printf '%s' "$TOK" | tr -d '[:space:]')"
+  echo "  -> ${#TOK} caracteres, empieza con '${TOK:0:4}'"
+  case "$TOK" in EAA*) : ;; *) echo "✗ Ese valor NO empieza con EAA, no es el token. Cancelo (no se guardó nada)."; return 1 ;; esac
+  [ "${#TOK}" -ge 100 ] || { echo "✗ El token parece incompleto (${#TOK} chars; debería ser ~200). Cópialo COMPLETO con el botón Copiar de Meta y repite: conversa wa"; return 1; }
+  printf 'ID del número [Enter = 1348410968363707]:\n> '
+  IFS= read -r PID; PID="$(printf '%s' "$PID" | tr -d '[:space:]')"; [ -n "$PID" ] || PID="1348410968363707"
+  printf 'Token de verificación [Enter = conversa-andina-2026]:\n> '
+  IFS= read -r VER; VER="$(printf '%s' "$VER" | tr -d '[:space:]')"; [ -n "$VER" ] || VER="conversa-andina-2026"
+  printf 'Pega el SECRETO de la app (corto, empieza con 00) y pulsa Enter:\n> '
+  IFS= read -r SEC; SEC="$(printf '%s' "$SEC" | tr -d '[:space:]')"
+  echo "  -> ${#SEC} caracteres, empieza con '${SEC:0:2}'"
+  [ "${#SEC}" -ge 16 ] || { echo "✗ El secreto está vacío o es muy corto. Cancelo (no se guardó nada)."; return 1; }
+  echo; echo "Resumen:  TOKEN ${#TOK} chars | NÚMERO $PID | VERIFY $VER | SECRETO ${#SEC} chars"
+  printf '¿Guardar y reiniciar? (escribe: si) > '
+  IFS= read -r OK; [ "$OK" = "si" ] || { echo "Cancelado, no se guardó nada."; return 1; }
+  sed -i '/^CONVERSA_WA_/d' "$env"
+  sed -i '/=/b;/^[[:space:]]*#/b;/^[[:space:]]*$/b;d' "$env"
+  { printf 'CONVERSA_WA_TOKEN=%s\n' "$TOK"; printf 'CONVERSA_WA_PHONE_ID=%s\n' "$PID"; printf 'CONVERSA_WA_VERIFY_TOKEN=%s\n' "$VER"; printf 'CONVERSA_WA_APP_SECRET=%s\n' "$SEC"; printf 'CONVERSA_WA_NUMBER=\n'; } >> "$env"
+  echo "✓ guardado en $env"; echo "Reiniciando la app…"; dc up -d --force-recreate conversa >/dev/null 2>&1 || true; sleep 4
+  echo "Suscribiendo la app a los mensajes del número (WABA $waba)…"
+  app_node "const t=process.env.CONVERSA_WA_TOKEN,w='$waba';fetch('https://graph.facebook.com/v25.0/'+w+'/subscribed_apps',{method:'POST',headers:{Authorization:'Bearer '+t}}).then(r=>r.json()).then(j=>console.log('  Suscripción:',JSON.stringify(j))).catch(e=>console.log('  (no se pudo suscribir:',e.message,')'))" 2>/dev/null || echo "  (no se pudo suscribir ahora)"
+  echo; echo "✓ Listo. Envía un WhatsApp al número de prueba y revisa:  conversa logs 15"
+}
+
 cmd_restart(){ echo "Reiniciando la app…"; dc up -d --force-recreate conversa; echo "✓ hecho"; cmd_status; }
 cmd_restart_tunnel(){ echo "Reiniciando el túnel de Cloudflare…"; dc restart tunnel 2>/dev/null || dc up -d --force-recreate tunnel; echo "✓ hecho. Espera 30 s y recarga el panel."; }
 cmd_logs(){ need_dir; dc logs --tail "${1:-80}" conversa; }
@@ -100,6 +134,8 @@ cmd_update(){
   cp -f "$tmp/x/package.json" "$tmp/x/package-lock.json" "$tmp/x/Dockerfile" "$DIR/"
   cp -f "$tmp/x/deploy/compose.yaml" "$DIR/deploy/"
   if [ -f "$tmp/x/deploy/compose.tunnel.yaml" ]; then cp -f "$tmp/x/deploy/compose.tunnel.yaml" "$DIR/deploy/"; fi
+  # Actualiza también esta herramienta de administración (reemplazo atómico para no romper la ejecución en curso).
+  if [ -f "$tmp/x/ops/conversa" ]; then install -m 0755 "$tmp/x/ops/conversa" /usr/local/bin/conversa.new 2>/dev/null && mv -f /usr/local/bin/conversa.new /usr/local/bin/conversa && echo "✓ herramienta 'conversa' actualizada"; fi
   rm -rf "$tmp"
   echo "Reconstruyendo y reiniciando (puede tardar 2-5 min)…"
   dc build
@@ -133,6 +169,7 @@ conversa — administración fácil de tu servidor
   conversa bot on           Volver a activar el bot
   conversa panel            Mostrar la dirección de tu panel de admin
   conversa code             Mostrar tu enlace de acceso con el código maestro (SECRETO)
+  conversa wa               Conectar/actualizar la API oficial de WhatsApp (token y secreto)
   conversa restart          Reiniciar la app (si se queda rara)
   conversa restart-tunnel   Reiniciar el túnel de Cloudflare (si el panel da Error 1033)
   conversa update           Traer la última versión de Conversa y reiniciar
@@ -149,6 +186,7 @@ case "${1:-help}" in
   bot)           shift; cmd_bot "${1:-}";;
   panel)         cmd_panel;;
   code|codigo)   cmd_code;;
+  wa|whatsapp-api) cmd_wa;;
   restart|reiniciar) cmd_restart;;
   restart-tunnel|tunnel) cmd_restart_tunnel;;
   update|actualizar) cmd_update;;
